@@ -1,28 +1,39 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
+  AlertTriangle,
   ArrowLeft,
-  BookOpen,
   CheckCircle2,
+  ClipboardList,
+  Edit3,
   Loader2,
   PlusCircle,
+  RefreshCcw,
   Save,
+  Send,
   Trash2,
 } from 'lucide-react'
 
 import { supabase } from '../lib/supabaseClient'
 import type { UserProfile } from '../types'
 
-type ExamStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED'
+type AddQuestionsPageProps = {
+  profile: UserProfile
+}
 
 type OptionKey = 'A' | 'B' | 'C' | 'D'
+
+type ExamStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED'
 
 type ExamDetails = {
   id: string
   title: string
   description: string | null
+  total_time_minutes: number
+  passing_marks: number
   status: ExamStatus
   created_by: string
+  created_at: string
 }
 
 type ExamQuestion = {
@@ -51,11 +62,7 @@ type QuestionFormState = {
   marks: string
 }
 
-type AddQuestionsPageProps = {
-  profile: UserProfile
-}
-
-const initialQuestionForm: QuestionFormState = {
+const emptyForm: QuestionFormState = {
   questionText: '',
   optionA: '',
   optionB: '',
@@ -67,110 +74,53 @@ const initialQuestionForm: QuestionFormState = {
 }
 
 function AddQuestionsPage({ profile }: AddQuestionsPageProps) {
-  const { examId } = useParams<{ examId: string }>()
+  const { examId } = useParams()
+  const navigate = useNavigate()
 
   const [exam, setExam] = useState<ExamDetails | null>(null)
   const [questions, setQuestions] = useState<ExamQuestion[]>([])
-  const [formState, setFormState] =
-    useState<QuestionFormState>(initialQuestionForm)
+  const [form, setForm] = useState<QuestionFormState>(emptyForm)
+  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null)
 
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
-  const [deletingQuestionId, setDeletingQuestionId] = useState<string | null>(
+  const [isPublishing, setIsPublishing] = useState(false)
+  const [isDeletingQuestionId, setIsDeletingQuestionId] = useState<string | null>(
     null,
   )
 
   const [errorMessage, setErrorMessage] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
 
-  const canModifyExam = useMemo(() => {
-    return exam?.status === 'DRAFT' || exam?.status === 'REJECTED'
-  }, [exam?.status])
+  const isAdmin = profile.role === 'ADMIN'
+  const isTutor = profile.role === 'TUTOR'
 
-  async function loadExamAndQuestions() {
-    if (!examId) {
-      setErrorMessage('Exam id is missing from the route.')
-      setIsLoading(false)
-      return
-    }
+  const backLink = isAdmin ? '/admin/exams/pending' : '/tutor/exams'
+  const backLabel = isAdmin ? 'Back to Admin Exams' : 'Back to My Exams'
 
-    setIsLoading(true)
-    setErrorMessage('')
-    setSuccessMessage('')
-
-    const { data: examData, error: examError } = await supabase
-      .from('exams')
-      .select('id, title, description, status, created_by')
-      .eq('id', examId)
-      .eq('created_by', profile.id)
-      .single()
-
-    if (examError) {
-      setExam(null)
-      setQuestions([])
-      setErrorMessage(examError.message)
-      setIsLoading(false)
-      return
-    }
-
-    const { data: questionData, error: questionError } = await supabase
-      .from('exam_questions')
-      .select(
-        'id, exam_id, question_text, option_a, option_b, option_c, option_d, correct_option, explanation, marks, question_order, created_at',
-      )
-      .eq('exam_id', examId)
-      .order('question_order', { ascending: true })
-
-    if (questionError) {
-      setExam(examData as ExamDetails)
-      setQuestions([])
-      setErrorMessage(questionError.message)
-      setIsLoading(false)
-      return
-    }
-
-    setExam(examData as ExamDetails)
-    setQuestions((questionData ?? []) as ExamQuestion[])
-    setIsLoading(false)
-  }
-
-  useEffect(() => {
-    void loadExamAndQuestions()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [examId, profile.id])
-
-  function updateFormField(
-    fieldName: keyof QuestionFormState,
-    value: string,
+  function updateFormField<Key extends keyof QuestionFormState>(
+    key: Key,
+    value: QuestionFormState[Key],
   ) {
-    setFormState((currentFormState) => ({
-      ...currentFormState,
-      [fieldName]: value,
+    setForm((currentForm) => ({
+      ...currentForm,
+      [key]: value,
     }))
   }
 
+  function resetForm() {
+    setForm(emptyForm)
+    setEditingQuestionId(null)
+  }
+
   function validateQuestionForm(): string | null {
-    if (!formState.questionText.trim()) {
-      return 'Question text is required.'
-    }
+    if (!form.questionText.trim()) return 'Question text is required.'
+    if (!form.optionA.trim()) return 'Option A is required.'
+    if (!form.optionB.trim()) return 'Option B is required.'
+    if (!form.optionC.trim()) return 'Option C is required.'
+    if (!form.optionD.trim()) return 'Option D is required.'
 
-    if (!formState.optionA.trim()) {
-      return 'Option A is required.'
-    }
-
-    if (!formState.optionB.trim()) {
-      return 'Option B is required.'
-    }
-
-    if (!formState.optionC.trim()) {
-      return 'Option C is required.'
-    }
-
-    if (!formState.optionD.trim()) {
-      return 'Option D is required.'
-    }
-
-    const marks = Number(formState.marks)
+    const marks = Number(form.marks)
 
     if (!Number.isFinite(marks) || marks <= 0) {
       return 'Marks must be greater than 0.'
@@ -179,18 +129,74 @@ function AddQuestionsPage({ profile }: AddQuestionsPageProps) {
     return null
   }
 
-  async function handleAddQuestion(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-
+  async function loadExamAndQuestions() {
     if (!examId) {
-      setErrorMessage('Exam id is missing from the route.')
+      setErrorMessage('Exam ID is missing.')
+      setIsLoading(false)
       return
     }
 
-    if (!canModifyExam) {
-      setErrorMessage(
-        'Questions can be changed only when exam status is Draft or Rejected.',
-      )
+    setIsLoading(true)
+    setErrorMessage('')
+    setSuccessMessage('')
+
+    try {
+      const examQuery = supabase
+        .from('exams')
+        .select(
+          'id, title, description, total_time_minutes, passing_marks, status, created_by, created_at',
+        )
+        .eq('id', examId)
+
+      if (isTutor) {
+        examQuery.eq('created_by', profile.id)
+      }
+
+      const examResponse = await examQuery.single()
+
+      if (examResponse.error) {
+        setErrorMessage(examResponse.error.message)
+        setExam(null)
+        setQuestions([])
+        return
+      }
+
+      const questionsResponse = await supabase
+        .from('exam_questions')
+        .select(
+          'id, exam_id, question_text, option_a, option_b, option_c, option_d, correct_option, explanation, marks, question_order, created_at',
+        )
+        .eq('exam_id', examId)
+        .order('question_order', { ascending: true })
+
+      if (questionsResponse.error) {
+        setErrorMessage(questionsResponse.error.message)
+        setExam(examResponse.data as ExamDetails)
+        setQuestions([])
+        return
+      }
+
+      setExam(examResponse.data as ExamDetails)
+      setQuestions((questionsResponse.data ?? []) as ExamQuestion[])
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Unable to load exam questions.'
+
+      setErrorMessage(message)
+      setExam(null)
+      setQuestions([])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  async function handleSaveQuestion(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!examId || !exam) {
+      setErrorMessage('Exam details are missing.')
       return
     }
 
@@ -198,89 +204,200 @@ function AddQuestionsPage({ profile }: AddQuestionsPageProps) {
 
     if (validationError) {
       setErrorMessage(validationError)
-      setSuccessMessage('')
       return
     }
-
-    const nextQuestionOrder = questions.length + 1
 
     setIsSaving(true)
     setErrorMessage('')
     setSuccessMessage('')
 
-    const { data, error } = await supabase
-      .from('exam_questions')
-      .insert({
-        exam_id: examId,
-        question_text: formState.questionText.trim(),
-        option_a: formState.optionA.trim(),
-        option_b: formState.optionB.trim(),
-        option_c: formState.optionC.trim(),
-        option_d: formState.optionD.trim(),
-        correct_option: formState.correctOption,
-        explanation: formState.explanation.trim() || null,
-        marks: Number(formState.marks),
-        question_order: nextQuestionOrder,
-      })
-      .select(
-        'id, exam_id, question_text, option_a, option_b, option_c, option_d, correct_option, explanation, marks, question_order, created_at',
-      )
-      .single()
-
-    if (error) {
-      setErrorMessage(error.message)
-      setIsSaving(false)
-      return
+    const payload = {
+      exam_id: examId,
+      question_text: form.questionText.trim(),
+      option_a: form.optionA.trim(),
+      option_b: form.optionB.trim(),
+      option_c: form.optionC.trim(),
+      option_d: form.optionD.trim(),
+      correct_option: form.correctOption,
+      explanation: form.explanation.trim() || null,
+      marks: Number(form.marks),
+      question_order:
+        editingQuestionId === null ? questions.length + 1 : undefined,
     }
 
-    setQuestions((currentQuestions) => [
-      ...currentQuestions,
-      data as ExamQuestion,
-    ])
-    setFormState(initialQuestionForm)
-    setSuccessMessage('Question added successfully.')
-    setIsSaving(false)
+    try {
+      if (editingQuestionId) {
+        const { error } = await supabase
+          .from('exam_questions')
+          .update({
+            question_text: payload.question_text,
+            option_a: payload.option_a,
+            option_b: payload.option_b,
+            option_c: payload.option_c,
+            option_d: payload.option_d,
+            correct_option: payload.correct_option,
+            explanation: payload.explanation,
+            marks: payload.marks,
+          })
+          .eq('id', editingQuestionId)
+          .eq('exam_id', examId)
+
+        if (error) {
+          setErrorMessage(error.message)
+          return
+        }
+
+        setSuccessMessage('Question updated successfully.')
+      } else {
+        const { error } = await supabase.from('exam_questions').insert(payload)
+
+        if (error) {
+          setErrorMessage(error.message)
+          return
+        }
+
+        setSuccessMessage('Question added successfully.')
+      }
+
+      resetForm()
+      await loadExamAndQuestions()
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unable to save question.'
+
+      setErrorMessage(message)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
-  async function handleDeleteQuestion(questionId: string) {
-    if (!canModifyExam) {
-      setErrorMessage(
-        'Questions can be deleted only when exam status is Draft or Rejected.',
-      )
-      return
-    }
+  function handleEditQuestion(question: ExamQuestion) {
+    setEditingQuestionId(question.id)
+    setForm({
+      questionText: question.question_text,
+      optionA: question.option_a,
+      optionB: question.option_b,
+      optionC: question.option_c,
+      optionD: question.option_d,
+      correctOption: question.correct_option,
+      explanation: question.explanation ?? '',
+      marks: String(question.marks),
+    })
 
-    setDeletingQuestionId(questionId)
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth',
+    })
+  }
+
+  async function handleDeleteQuestion(question: ExamQuestion) {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete this question?\n\n${question.question_text}`,
+    )
+
+    if (!confirmed) return
+
+    setIsDeletingQuestionId(question.id)
     setErrorMessage('')
     setSuccessMessage('')
 
-    const { error } = await supabase
-      .from('exam_questions')
-      .delete()
-      .eq('id', questionId)
-      .eq('exam_id', examId)
+    try {
+      const { error } = await supabase
+        .from('exam_questions')
+        .delete()
+        .eq('id', question.id)
+        .eq('exam_id', question.exam_id)
 
-    if (error) {
-      setErrorMessage(error.message)
-      setDeletingQuestionId(null)
+      if (error) {
+        setErrorMessage(error.message)
+        return
+      }
+
+      setSuccessMessage('Question deleted successfully.')
+      await loadExamAndQuestions()
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unable to delete question.'
+
+      setErrorMessage(message)
+    } finally {
+      setIsDeletingQuestionId(null)
+    }
+  }
+
+  async function handlePublishForApproval() {
+    if (!examId) return
+
+    if (questions.length === 0) {
+      setErrorMessage('Please add at least one question before publishing.')
       return
     }
 
-    setQuestions((currentQuestions) =>
-      currentQuestions.filter((question) => question.id !== questionId),
-    )
-    setSuccessMessage('Question deleted successfully.')
-    setDeletingQuestionId(null)
+    setIsPublishing(true)
+    setErrorMessage('')
+    setSuccessMessage('')
+
+    try {
+      const { error } = await supabase
+        .from('exams')
+        .update({
+          status: 'PENDING_APPROVAL',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', examId)
+        .eq('created_by', profile.id)
+
+      if (error) {
+        setErrorMessage(error.message)
+        return
+      }
+
+      setSuccessMessage('Exam published for admin approval.')
+      await loadExamAndQuestions()
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Unable to publish exam for approval.'
+
+      setErrorMessage(message)
+    } finally {
+      setIsPublishing(false)
+    }
   }
+
+  useEffect(() => {
+    void loadExamAndQuestions()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [examId, profile.id, profile.role])
 
   if (isLoading) {
     return (
       <main className="page-shell">
-        <section className="content-card">
-          <div className="inline-loading">
-            <Loader2 size={22} className="spin-icon" />
-            Loading exam questions...
-          </div>
+        <section className="placeholder-card">
+          <Loader2 size={34} className="spin-icon" />
+          <h1>Loading Questions</h1>
+          <p>Please wait while we load exam questions.</p>
+        </section>
+      </main>
+    )
+  }
+
+  if (errorMessage && !exam) {
+    return (
+      <main className="page-shell">
+        <section className="placeholder-card error-card">
+          <AlertTriangle size={42} />
+          <h1>Unable to Load Exam</h1>
+          <p>{errorMessage}</p>
+
+          <button
+            type="button"
+            className="primary-button"
+            onClick={() => void loadExamAndQuestions()}
+          >
+            Retry
+          </button>
         </section>
       </main>
     )
@@ -289,14 +406,13 @@ function AddQuestionsPage({ profile }: AddQuestionsPageProps) {
   if (!exam) {
     return (
       <main className="page-shell">
-        <section className="placeholder-card error-card">
-          <p className="eyebrow">Exam Not Found</p>
-          <h1>Unable to load exam</h1>
-          <p>{errorMessage || 'The exam does not exist or is not yours.'}</p>
+        <section className="placeholder-card">
+          <AlertTriangle size={42} />
+          <h1>Exam Not Found</h1>
+          <p>This exam does not exist or you do not have permission.</p>
 
-          <Link to="/tutor/exams" className="secondary-button">
-            <ArrowLeft size={17} />
-            Back to Exams
+          <Link to={backLink} className="primary-button">
+            {backLabel}
           </Link>
         </section>
       </main>
@@ -307,83 +423,81 @@ function AddQuestionsPage({ profile }: AddQuestionsPageProps) {
     <main className="page-shell">
       <section className="dashboard-header">
         <div>
-          <p className="eyebrow">Question Bank</p>
+          <p className="eyebrow">
+            {isAdmin ? 'Admin Exam Editor' : 'Tutor Exam Editor'}
+          </p>
           <h1>{exam.title}</h1>
           <p>
-            Add multiple-choice questions, correct answers, marks, and
-            explanations. Explanations will be shown only after result.
+            {isAdmin
+              ? 'Admin can edit questions for any exam.'
+              : 'You can add, edit, or delete questions for tests created by you.'}
           </p>
         </div>
 
-        <Link to="/tutor/exams" className="secondary-button">
-          <ArrowLeft size={17} />
-          Back to Exams
-        </Link>
-      </section>
+        <div className="dashboard-actions">
+          <Link to={backLink} className="secondary-button">
+            <ArrowLeft size={18} />
+            {backLabel}
+          </Link>
 
-      <section className="stats-grid">
-        <article className="stat-card">
-          <span>Total Questions</span>
-          <strong>{questions.length}</strong>
-        </article>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => void loadExamAndQuestions()}
+          >
+            <RefreshCcw size={18} />
+            Refresh
+          </button>
 
-        <article className="stat-card">
-          <span>Total Marks</span>
-          <strong>
-            {questions.reduce(
-              (totalMarks, question) => totalMarks + question.marks,
-              0,
-            )}
-          </strong>
-        </article>
-
-        <article className="stat-card">
-          <span>Exam Status</span>
-          <strong>{exam.status.replace('_', ' ')}</strong>
-        </article>
-      </section>
-
-      {!canModifyExam ? (
-        <div className="alert-message alert-error">
-          This exam is already published or approved. For MVP, questions are
-          editable only in Draft or Rejected status.
+          {isTutor && (exam.status === 'DRAFT' || exam.status === 'REJECTED') ? (
+            <button
+              type="button"
+              className="primary-button"
+              disabled={isPublishing}
+              onClick={() => void handlePublishForApproval()}
+            >
+              {isPublishing ? (
+                <Loader2 size={18} className="spin-icon" />
+              ) : (
+                <Send size={18} />
+              )}
+              {isPublishing ? 'Publishing...' : 'Publish for Approval'}
+            </button>
+          ) : null}
         </div>
-      ) : null}
+      </section>
 
       {errorMessage ? (
         <div className="alert-message alert-error">{errorMessage}</div>
       ) : null}
 
       {successMessage ? (
-        <div className="alert-message alert-success">
-          <CheckCircle2 size={18} />
-          {successMessage}
-        </div>
+        <div className="alert-message alert-success">{successMessage}</div>
       ) : null}
 
       <section className="content-grid two-column-grid">
         <article className="content-card">
           <div className="section-title-row">
             <div>
-              <h2>Add Question</h2>
+              <h2>{editingQuestionId ? 'Edit Question' : 'Add Question'}</h2>
               <p>
-                Correct answer is stored for result calculation, but it should
-                not be exposed on the student exam screen.
+                Add question text, four options, correct answer, marks, and
+                explanation.
               </p>
             </div>
           </div>
 
-          <form className="form-card" onSubmit={handleAddQuestion}>
+          <form className="form-card" onSubmit={handleSaveQuestion}>
             <label className="form-field">
               <span>Question Text</span>
               <textarea
-                value={formState.questionText}
+                value={form.questionText}
                 onChange={(event) =>
                   updateFormField('questionText', event.target.value)
                 }
-                placeholder="Enter question text"
+                placeholder="Enter question"
                 rows={4}
-                disabled={!canModifyExam || isSaving}
+                disabled={isSaving}
               />
             </label>
 
@@ -391,68 +505,64 @@ function AddQuestionsPage({ profile }: AddQuestionsPageProps) {
               <label className="form-field">
                 <span>Option A</span>
                 <input
-                  type="text"
-                  value={formState.optionA}
+                  value={form.optionA}
                   onChange={(event) =>
                     updateFormField('optionA', event.target.value)
                   }
-                  placeholder="Enter option A"
-                  disabled={!canModifyExam || isSaving}
+                  placeholder="Option A"
+                  disabled={isSaving}
                 />
               </label>
 
               <label className="form-field">
                 <span>Option B</span>
                 <input
-                  type="text"
-                  value={formState.optionB}
+                  value={form.optionB}
                   onChange={(event) =>
                     updateFormField('optionB', event.target.value)
                   }
-                  placeholder="Enter option B"
-                  disabled={!canModifyExam || isSaving}
+                  placeholder="Option B"
+                  disabled={isSaving}
                 />
               </label>
 
               <label className="form-field">
                 <span>Option C</span>
                 <input
-                  type="text"
-                  value={formState.optionC}
+                  value={form.optionC}
                   onChange={(event) =>
                     updateFormField('optionC', event.target.value)
                   }
-                  placeholder="Enter option C"
-                  disabled={!canModifyExam || isSaving}
+                  placeholder="Option C"
+                  disabled={isSaving}
                 />
               </label>
 
               <label className="form-field">
                 <span>Option D</span>
                 <input
-                  type="text"
-                  value={formState.optionD}
+                  value={form.optionD}
                   onChange={(event) =>
                     updateFormField('optionD', event.target.value)
                   }
-                  placeholder="Enter option D"
-                  disabled={!canModifyExam || isSaving}
+                  placeholder="Option D"
+                  disabled={isSaving}
                 />
               </label>
             </div>
 
             <div className="form-grid">
               <label className="form-field">
-                <span>Correct Option</span>
+                <span>Correct Answer</span>
                 <select
-                  value={formState.correctOption}
+                  value={form.correctOption}
                   onChange={(event) =>
                     updateFormField(
                       'correctOption',
                       event.target.value as OptionKey,
                     )
                   }
-                  disabled={!canModifyExam || isSaving}
+                  disabled={isSaving}
                 >
                   <option value="A">A</option>
                   <option value="B">B</option>
@@ -466,11 +576,11 @@ function AddQuestionsPage({ profile }: AddQuestionsPageProps) {
                 <input
                   type="number"
                   min="1"
-                  value={formState.marks}
+                  value={form.marks}
                   onChange={(event) =>
                     updateFormField('marks', event.target.value)
                   }
-                  disabled={!canModifyExam || isSaving}
+                  disabled={isSaving}
                 />
               </label>
             </div>
@@ -478,107 +588,179 @@ function AddQuestionsPage({ profile }: AddQuestionsPageProps) {
             <label className="form-field">
               <span>Explanation</span>
               <textarea
-                value={formState.explanation}
+                value={form.explanation}
                 onChange={(event) =>
                   updateFormField('explanation', event.target.value)
                 }
-                placeholder="Explanation visible after result only"
-                rows={3}
-                disabled={!canModifyExam || isSaving}
+                placeholder="Explanation shown only after result review"
+                rows={4}
+                disabled={isSaving}
               />
             </label>
 
-            <button
-              type="submit"
-              className="primary-button full-width-button"
-              disabled={!canModifyExam || isSaving}
-            >
-              {isSaving ? (
-                <Loader2 size={18} className="spin-icon" />
-              ) : (
-                <Save size={18} />
-              )}
-              Save Question
-            </button>
+            <div className="exam-card-actions">
+              <button
+                type="submit"
+                className="primary-button"
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <Loader2 size={18} className="spin-icon" />
+                ) : editingQuestionId ? (
+                  <Save size={18} />
+                ) : (
+                  <PlusCircle size={18} />
+                )}
+                {isSaving
+                  ? 'Saving...'
+                  : editingQuestionId
+                    ? 'Update Question'
+                    : 'Add Question'}
+              </button>
+
+              {editingQuestionId ? (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={isSaving}
+                  onClick={resetForm}
+                >
+                  Cancel Edit
+                </button>
+              ) : null}
+            </div>
           </form>
         </article>
 
         <article className="content-card">
           <div className="section-title-row">
             <div>
-              <h2>Saved Questions</h2>
-              <p>
-                Review questions before publishing the exam for admin approval.
-              </p>
+              <h2>Exam Summary</h2>
+              <p>Basic details and current question count.</p>
             </div>
           </div>
 
-          {questions.length === 0 ? (
-            <div className="empty-state">
-              <BookOpen size={42} />
-              <h3>No questions added</h3>
-              <p>Add at least one question before publishing the exam.</p>
+          <div className="exam-meta-grid">
+            <div>
+              <span>Status</span>
+              <strong>{exam.status}</strong>
             </div>
-          ) : (
-            <div className="question-list">
-              {questions.map((question, index) => (
-                <article key={question.id} className="question-card">
-                  <div className="question-card-header">
-                    <div>
-                      <p className="eyebrow">Question {index + 1}</p>
-                      <h3>{question.question_text}</h3>
-                    </div>
 
-                    <span className="status-pill status-draft">
-                      {question.marks} mark
-                      {question.marks > 1 ? 's' : ''}
-                    </span>
+            <div>
+              <span>Total Time</span>
+              <strong>{exam.total_time_minutes} minutes</strong>
+            </div>
+
+            <div>
+              <span>Passing Percentage</span>
+              <strong>{exam.passing_marks}%</strong>
+            </div>
+
+            <div>
+              <span>Total Questions</span>
+              <strong>{questions.length}</strong>
+            </div>
+          </div>
+
+          <div className="alert-message alert-success create-exam-note">
+            <ClipboardList size={18} />
+            Correct answers and explanations are visible only after the student
+            submits the exam.
+          </div>
+        </article>
+      </section>
+
+      <section className="question-list">
+        {questions.length === 0 ? (
+          <section className="placeholder-card">
+            <ClipboardList size={42} />
+            <h2>No questions added yet</h2>
+            <p>Add the first question using the form above.</p>
+          </section>
+        ) : (
+          questions.map((question, index) => {
+            const isDeleting = isDeletingQuestionId === question.id
+
+            return (
+              <article className="question-card" key={question.id}>
+                <div className="question-header">
+                  <div>
+                    <p className="eyebrow">Question {index + 1}</p>
+                    <h2>{question.question_text}</h2>
                   </div>
 
-                  <div className="option-list">
-                    <p>
-                      <strong>A.</strong> {question.option_a}
-                    </p>
-                    <p>
-                      <strong>B.</strong> {question.option_b}
-                    </p>
-                    <p>
-                      <strong>C.</strong> {question.option_c}
-                    </p>
-                    <p>
-                      <strong>D.</strong> {question.option_d}
-                    </p>
-                  </div>
+                  <span className="marks-pill">{question.marks} Marks</span>
+                </div>
 
-                  <div className="answer-preview">
-                    <PlusCircle size={16} />
-                    Correct Answer: Option {question.correct_option}
-                  </div>
+                <div className="option-list">
+                  {(['A', 'B', 'C', 'D'] as OptionKey[]).map((optionKey) => {
+                    const optionText =
+                      optionKey === 'A'
+                        ? question.option_a
+                        : optionKey === 'B'
+                          ? question.option_b
+                          : optionKey === 'C'
+                            ? question.option_c
+                            : question.option_d
 
-                  {question.explanation ? (
-                    <p className="question-explanation">
-                      Explanation: {question.explanation}
-                    </p>
-                  ) : null}
+                    return (
+                      <div
+                        className={
+                          question.correct_option === optionKey
+                            ? 'option-card option-card-correct'
+                            : 'option-card'
+                        }
+                        key={optionKey}
+                      >
+                        <span className="option-key">{optionKey}</span>
+                        <span>{optionText}</span>
+
+                        {question.correct_option === optionKey ? (
+                          <strong className="option-badge correct-badge">
+                            Correct Answer
+                          </strong>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div className="explanation-card">
+                  <strong>Explanation:</strong>
+                  <p>
+                    {question.explanation ||
+                      'No explanation was added for this question.'}
+                  </p>
+                </div>
+
+                <div className="exam-card-actions">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => handleEditQuestion(question)}
+                  >
+                    <Edit3 size={18} />
+                    Edit Question
+                  </button>
 
                   <button
                     type="button"
                     className="danger-button"
-                    disabled={!canModifyExam || deletingQuestionId === question.id}
-                    onClick={() => void handleDeleteQuestion(question.id)}
+                    disabled={isDeleting}
+                    onClick={() => void handleDeleteQuestion(question)}
                   >
-                    {deletingQuestionId === question.id ? (
-                      <Loader2 size={16} className="spin-icon" />
+                    {isDeleting ? (
+                      <Loader2 size={18} className="spin-icon" />
                     ) : (
-                      <Trash2 size={16} />
+                      <Trash2 size={18} />
                     )}
-                    Delete
+                    {isDeleting ? 'Deleting...' : 'Delete Question'}
                   </button>
-                </article>
-              ))}
-            </div>
-          )}
-        </article>
+                </div>
+              </article>
+            )
+          })
+        )}
       </section>
     </main>
   )

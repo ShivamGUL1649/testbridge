@@ -10,6 +10,7 @@ import {
   Loader2,
   RefreshCcw,
   Send,
+  Trash2,
 } from 'lucide-react'
 
 import { supabase } from '../lib/supabaseClient'
@@ -31,28 +32,6 @@ type TutorExam = {
   created_by: string
   created_at: string
   updated_at: string | null
-}
-
-function withTimeout<T>(
-  request: PromiseLike<T>,
-  timeoutMs: number,
-  errorMessage: string,
-): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(() => {
-      reject(new Error(errorMessage))
-    }, timeoutMs)
-
-    Promise.resolve(request)
-      .then((result) => {
-        window.clearTimeout(timer)
-        resolve(result)
-      })
-      .catch((error) => {
-        window.clearTimeout(timer)
-        reject(error)
-      })
-  })
 }
 
 function getStatusIcon(status: ExamStatus): ReactNode {
@@ -99,7 +78,9 @@ function TutorExamsPage({ profile }: TutorExamsPageProps) {
   const [exams, setExams] = useState<TutorExam[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isPublishingId, setIsPublishingId] = useState<string | null>(null)
+  const [isDeletingId, setIsDeletingId] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
 
   async function loadTutorExams() {
     if (!profile?.id) {
@@ -110,32 +91,27 @@ function TutorExamsPage({ profile }: TutorExamsPageProps) {
 
     setIsLoading(true)
     setErrorMessage('')
+    setSuccessMessage('')
 
     try {
-      const response = await withTimeout(
-        supabase
-          .from('exams')
-          .select(
-            'id, title, description, total_time_minutes, passing_marks, status, created_by, created_at, updated_at',
-          )
-          .eq('created_by', profile.id)
-          .order('created_at', { ascending: false }),
-        10000,
-        'My Exams loading timed out. Please check Supabase connection or RLS policy.',
-      )
+      const { data, error } = await supabase
+        .from('exams')
+        .select(
+          'id, title, description, total_time_minutes, passing_marks, status, created_by, created_at, updated_at',
+        )
+        .eq('created_by', profile.id)
+        .order('created_at', { ascending: false })
 
-      if (response.error) {
-        setErrorMessage(response.error.message)
+      if (error) {
+        setErrorMessage(error.message)
         setExams([])
         return
       }
 
-      setExams((response.data ?? []) as TutorExam[])
+      setExams((data ?? []) as TutorExam[])
     } catch (error) {
       const message =
-        error instanceof Error
-          ? error.message
-          : 'Unable to load tutor exams.'
+        error instanceof Error ? error.message : 'Unable to load tutor exams.'
 
       setErrorMessage(message)
       setExams([])
@@ -147,28 +123,24 @@ function TutorExamsPage({ profile }: TutorExamsPageProps) {
   async function handlePublishForApproval(examId: string) {
     setIsPublishingId(examId)
     setErrorMessage('')
+    setSuccessMessage('')
 
     try {
-      const response = await withTimeout(
-        supabase
-          .from('exams')
-          .update({
-            status: 'PENDING_APPROVAL',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', examId)
-          .eq('created_by', profile.id)
-          .select('id')
-          .single(),
-        10000,
-        'Publish request timed out. Please try again.',
-      )
+      const { error } = await supabase
+        .from('exams')
+        .update({
+          status: 'PENDING_APPROVAL',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', examId)
+        .eq('created_by', profile.id)
 
-      if (response.error) {
-        setErrorMessage(response.error.message)
+      if (error) {
+        setErrorMessage(error.message)
         return
       }
 
+      setSuccessMessage('Exam published for admin approval.')
       await loadTutorExams()
     } catch (error) {
       const message =
@@ -179,6 +151,43 @@ function TutorExamsPage({ profile }: TutorExamsPageProps) {
       setErrorMessage(message)
     } finally {
       setIsPublishingId(null)
+    }
+  }
+
+  async function handleDeleteExam(exam: TutorExam) {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${exam.title}"?\n\nThis will permanently delete the exam and its questions.`,
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    setIsDeletingId(exam.id)
+    setErrorMessage('')
+    setSuccessMessage('')
+
+    try {
+      const { error } = await supabase
+        .from('exams')
+        .delete()
+        .eq('id', exam.id)
+        .eq('created_by', profile.id)
+
+      if (error) {
+        setErrorMessage(error.message)
+        return
+      }
+
+      setSuccessMessage('Exam deleted successfully.')
+      await loadTutorExams()
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unable to delete exam.'
+
+      setErrorMessage(message)
+    } finally {
+      setIsDeletingId(null)
     }
   }
 
@@ -206,8 +215,8 @@ function TutorExamsPage({ profile }: TutorExamsPageProps) {
           <p className="eyebrow">Tutor Workspace</p>
           <h1>My Exams</h1>
           <p>
-            Manage your draft exams, submit exams for admin approval, and track
-            approval status.
+            Manage only exams created by you. You can edit questions, publish,
+            or delete your own exams.
           </p>
         </div>
 
@@ -232,6 +241,10 @@ function TutorExamsPage({ profile }: TutorExamsPageProps) {
         <div className="alert-message alert-error">{errorMessage}</div>
       ) : null}
 
+      {successMessage ? (
+        <div className="alert-message alert-success">{successMessage}</div>
+      ) : null}
+
       {exams.length === 0 ? (
         <section className="placeholder-card">
           <BookOpen size={42} />
@@ -246,11 +259,11 @@ function TutorExamsPage({ profile }: TutorExamsPageProps) {
       ) : (
         <section className="card-grid">
           {exams.map((exam) => {
-            const canEditQuestions =
-              exam.status === 'DRAFT' || exam.status === 'REJECTED'
-
             const canPublish =
               exam.status === 'DRAFT' || exam.status === 'REJECTED'
+
+            const isPublishing = isPublishingId === exam.id
+            const isDeleting = isDeletingId === exam.id
 
             return (
               <article className="exam-card" key={exam.id}>
@@ -273,8 +286,8 @@ function TutorExamsPage({ profile }: TutorExamsPageProps) {
                   </div>
 
                   <div>
-                    <span>Passing Marks</span>
-                    <strong>{exam.passing_marks}</strong>
+                    <span>Passing Percentage</span>
+                    <strong>{exam.passing_marks}%</strong>
                   </div>
 
                   <div>
@@ -286,41 +299,43 @@ function TutorExamsPage({ profile }: TutorExamsPageProps) {
                 </div>
 
                 <div className="exam-card-actions">
-                  {canEditQuestions ? (
-                    <Link
-                      to={`/tutor/exam/${exam.id}/questions`}
-                      className="secondary-button"
-                    >
-                      <Edit3 size={18} />
-                      Add / Edit Questions
-                    </Link>
-                  ) : (
-                    <Link
-                      to={`/tutor/exam/${exam.id}/questions`}
-                      className="secondary-button"
-                    >
-                      <BookOpen size={18} />
-                      View Questions
-                    </Link>
-                  )}
+                  <Link
+                    to={`/tutor/exam/${exam.id}/questions`}
+                    className="secondary-button"
+                  >
+                    <Edit3 size={18} />
+                    Edit Test
+                  </Link>
 
                   {canPublish ? (
                     <button
                       type="button"
                       className="primary-button"
-                      disabled={isPublishingId === exam.id}
+                      disabled={isPublishing || isDeleting}
                       onClick={() => void handlePublishForApproval(exam.id)}
                     >
-                      {isPublishingId === exam.id ? (
+                      {isPublishing ? (
                         <Loader2 size={18} className="spin-icon" />
                       ) : (
                         <Send size={18} />
                       )}
-                      {isPublishingId === exam.id
-                        ? 'Publishing...'
-                        : 'Publish for Approval'}
+                      {isPublishing ? 'Publishing...' : 'Publish for Approval'}
                     </button>
                   ) : null}
+
+                  <button
+                    type="button"
+                    className="danger-button"
+                    disabled={isPublishing || isDeleting}
+                    onClick={() => void handleDeleteExam(exam)}
+                  >
+                    {isDeleting ? (
+                      <Loader2 size={18} className="spin-icon" />
+                    ) : (
+                      <Trash2 size={18} />
+                    )}
+                    {isDeleting ? 'Deleting...' : 'Delete'}
+                  </button>
                 </div>
               </article>
             )

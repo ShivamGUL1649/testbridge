@@ -65,7 +65,7 @@ function HomePage() {
 
             <div className="flow-item">
               <strong>Admin</strong>
-              <span>Approve or reject published exams</span>
+              <span>Approve, edit, or delete exams</span>
             </div>
 
             <div className="flow-item">
@@ -195,11 +195,6 @@ function App() {
         return
       }
 
-      /*
-        Important:
-        Do not call Supabase profile query directly inside onAuthStateChange.
-        Schedule it outside the callback to avoid refresh/tab-switch hanging.
-      */
       window.setTimeout(async () => {
         if (!isMounted) return
 
@@ -452,6 +447,19 @@ function App() {
                 isLoading={false}
               >
                 <AdminPendingExamsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/exam/:examId/questions"
+            element={
+              <ProtectedRoute
+                profile={profile}
+                allowedRoles={['ADMIN']}
+                isLoading={false}
+              >
+                <AddQuestionsPage profile={profile as UserProfile} />
               </ProtectedRoute>
             }
           />
