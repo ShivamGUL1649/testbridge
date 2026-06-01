@@ -416,20 +416,59 @@ function ExamAttemptPage({ profile }: ExamAttemptPageProps) {
   }
 
   return (
-    <main className="page-shell">
+    <main className="page-shell exam-attempt-page">
+      <div
+        className="floating-exam-timer"
+        style={{
+          position: 'fixed',
+          top: '88px',
+          right: '24px',
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          padding: '14px 18px',
+          borderRadius: '18px',
+          background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+          color: '#ffffff',
+          boxShadow: '0 18px 45px rgba(79, 70, 229, 0.35)',
+          border: '1px solid rgba(255, 255, 255, 0.35)',
+          minWidth: '190px',
+        }}
+      >
+        <Clock size={22} />
+        <div>
+          <span
+            style={{
+              display: 'block',
+              fontSize: '0.72rem',
+              fontWeight: 800,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              opacity: 0.9,
+            }}
+          >
+            Time Left
+          </span>
+          <strong
+            style={{
+              display: 'block',
+              fontSize: '1.45rem',
+              lineHeight: 1.1,
+              fontWeight: 900,
+              letterSpacing: '0.04em',
+            }}
+          >
+            {formatRemainingTime(remainingSeconds)}
+          </strong>
+        </div>
+      </div>
+
       <section className="exam-attempt-header">
         <div>
           <p className="eyebrow">Student Exam Attempt</p>
           <h1>{exam.title}</h1>
           <p>{exam.description || 'Complete all questions before timer ends.'}</p>
-        </div>
-
-        <div className="timer-card">
-          <Clock size={22} />
-          <div>
-            <span>Time Left</span>
-            <strong>{formatRemainingTime(remainingSeconds)}</strong>
-          </div>
         </div>
       </section>
 
