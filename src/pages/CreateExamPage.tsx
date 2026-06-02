@@ -28,15 +28,15 @@ function CreateExamPage({ profile }: CreateExamPageProps) {
 
   function validateForm(): string | null {
     if (!profile?.id) {
-      return 'Tutor profile is missing. Please logout and login again.'
+      return 'Test Creator profile is missing. Please logout and login again.'
     }
 
     if (profile.role !== 'TUTOR') {
-      return 'Only tutor users can create exams.'
+      return 'Only Test Creator users can create tests.'
     }
 
     if (!title.trim()) {
-      return 'Exam name is required.'
+      return 'Test name is required.'
     }
 
     const timeValue = Number(totalTimeMinutes)
@@ -75,12 +75,6 @@ function CreateExamPage({ profile }: CreateExamPageProps) {
     setErrorMessage('')
 
     try {
-      /*
-        Important:
-        Database column name is still passing_marks.
-        For MVP, we are using this column as passing_percentage.
-        Example: value 78 means student needs >= 78%.
-      */
       const { data, error } = await supabase
         .from('exams')
         .insert({
@@ -101,7 +95,7 @@ function CreateExamPage({ profile }: CreateExamPageProps) {
       }
 
       if (!data?.id) {
-        setErrorMessage('Exam was not created. Please try again.')
+        setErrorMessage('Test was not created. Please try again.')
         return
       }
 
@@ -110,7 +104,7 @@ function CreateExamPage({ profile }: CreateExamPageProps) {
       const message =
         error instanceof Error
           ? error.message
-          : 'Something went wrong while creating the exam.'
+          : 'Something went wrong while creating the test.'
 
       setErrorMessage(message)
     } finally {
@@ -122,10 +116,10 @@ function CreateExamPage({ profile }: CreateExamPageProps) {
     <main className="page-shell">
       <section className="dashboard-header">
         <div>
-          <p className="eyebrow">Tutor Exam Setup</p>
-          <h1>Create New Exam</h1>
+          <p className="eyebrow">Test Creator Setup</p>
+          <h1>Create New Test</h1>
           <p>
-            Create the basic exam details first. After saving, you will add
+            Create the basic test details first. After saving, you will add
             questions, options, correct answers, and explanations.
           </p>
         </div>
@@ -139,24 +133,24 @@ function CreateExamPage({ profile }: CreateExamPageProps) {
         <article className="content-card">
           <div className="section-title-row">
             <div>
-              <h2>Exam Details</h2>
+              <h2>Test Details</h2>
               <p>
-                New exams are saved as Draft. Students can see exams only after
-                admin approval.
+                New tests are saved as Draft. Test takers can see tests only
+                after admin approval.
               </p>
             </div>
           </div>
 
           <form className="form-card" onSubmit={handleCreateExam}>
             <label className="form-field">
-              <span>Exam Name</span>
+              <span>Test Name</span>
               <div className="input-with-icon">
                 <BookOpen size={18} />
                 <input
                   type="text"
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
-                  placeholder="Example: CP Practice Test"
+                  placeholder="Example: Cloud Practice Test"
                   disabled={isSaving}
                 />
               </div>
@@ -167,7 +161,7 @@ function CreateExamPage({ profile }: CreateExamPageProps) {
               <textarea
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
-                placeholder="Describe what this exam is about..."
+                placeholder="Describe what this test is about..."
                 rows={4}
                 disabled={isSaving}
               />
@@ -218,7 +212,7 @@ function CreateExamPage({ profile }: CreateExamPageProps) {
               ) : (
                 <FilePlus2 size={18} />
               )}
-              {isSaving ? 'Creating Exam...' : 'Create Exam'}
+              {isSaving ? 'Creating Test...' : 'Create Test'}
             </button>
           </form>
         </article>
@@ -226,9 +220,9 @@ function CreateExamPage({ profile }: CreateExamPageProps) {
         <article className="content-card">
           <div className="section-title-row">
             <div>
-              <h2>Exam Workflow</h2>
+              <h2>Test Workflow</h2>
               <p>
-                TestBridge follows a controlled exam publishing workflow.
+                TestBridge follows a controlled test publishing workflow.
               </p>
             </div>
           </div>
@@ -237,7 +231,7 @@ function CreateExamPage({ profile }: CreateExamPageProps) {
             <div className="flow-item">
               <strong>1. Create Draft</strong>
               <span>
-                Save exam title, description, timer, and passing percentage.
+                Save test title, description, timer, and passing percentage.
               </span>
             </div>
 
@@ -250,13 +244,13 @@ function CreateExamPage({ profile }: CreateExamPageProps) {
 
             <div className="flow-item">
               <strong>3. Publish for Approval</strong>
-              <span>Tutor publishes the exam for admin review.</span>
+              <span>Test Creator publishes the test for admin review.</span>
             </div>
 
             <div className="flow-item">
-              <strong>4. Student Attempt</strong>
+              <strong>4. Test Taker Attempt</strong>
               <span>
-                Student passes only when score percentage is greater than or
+                Test taker passes only when score percentage is greater than or
                 equal to passing percentage.
               </span>
             </div>
@@ -264,7 +258,7 @@ function CreateExamPage({ profile }: CreateExamPageProps) {
 
           <div className="alert-message alert-success create-exam-note">
             <ClipboardList size={18} />
-            Example: If passing percentage is 78%, student must score 78% or
+            Example: If passing percentage is 78%, test taker must score 78% or
             more to pass.
           </div>
         </article>

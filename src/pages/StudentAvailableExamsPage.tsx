@@ -47,28 +47,6 @@ type AttemptMap = Record<
   }
 >
 
-function withTimeout<T>(
-  request: PromiseLike<T>,
-  timeoutMs: number,
-  errorMessage: string,
-): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(() => {
-      reject(new Error(errorMessage))
-    }, timeoutMs)
-
-    Promise.resolve(request)
-      .then((result) => {
-        window.clearTimeout(timer)
-        resolve(result)
-      })
-      .catch((error) => {
-        window.clearTimeout(timer)
-        reject(error)
-      })
-  })
-}
-
 function buildAttemptMap(attempts: ExamAttemptSummary[]): AttemptMap {
   return attempts.reduce<AttemptMap>((accumulator, attempt) => {
     const existing = accumulator[attempt.exam_id]
@@ -107,14 +85,14 @@ function buildAttemptMap(attempts: ExamAttemptSummary[]): AttemptMap {
 function StudentAvailableExamsPage({
   profile,
 }: StudentAvailableExamsPageProps) {
-  const [exams, setExams] = useState<ApprovedExam[]>([])
+  const [tests, setTests] = useState<ApprovedExam[]>([])
   const [attemptMap, setAttemptMap] = useState<AttemptMap>({})
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
 
-  async function loadApprovedExams() {
+  async function loadApprovedTests() {
     if (!profile?.id) {
-      setErrorMessage('Student profile is missing. Please logout and login again.')
+      setErrorMessage('Test Taker profile is missing. Please logout and login again.')
       setIsLoading(false)
       return
     }
@@ -123,43 +101,35 @@ function StudentAvailableExamsPage({
     setErrorMessage('')
 
     try {
-      const examsResponse = await withTimeout(
-        supabase
-          .from('exams')
-          .select(
-            'id, title, description, total_time_minutes, passing_marks, status, created_by, created_at',
-          )
-          .eq('status', 'APPROVED')
-          .order('created_at', { ascending: false }),
-        10000,
-        'Approved exams loading timed out. Please check Supabase connection or RLS policy.',
-      )
+      const testsResponse = await supabase
+        .from('exams')
+        .select(
+          'id, title, description, total_time_minutes, passing_marks, status, created_by, created_at',
+        )
+        .eq('status', 'APPROVED')
+        .order('created_at', { ascending: false })
 
-      if (examsResponse.error) {
-        setErrorMessage(examsResponse.error.message)
-        setExams([])
+      if (testsResponse.error) {
+        setErrorMessage(testsResponse.error.message)
+        setTests([])
         setAttemptMap({})
         return
       }
 
-      const attemptsResponse = await withTimeout(
-        supabase
-          .from('exam_attempts')
-          .select('exam_id, score, total_marks, passed, submitted_at')
-          .eq('student_id', profile.id)
-          .order('submitted_at', { ascending: false }),
-        10000,
-        'Student attempt history loading timed out.',
-      )
+      const attemptsResponse = await supabase
+        .from('exam_attempts')
+        .select('exam_id, score, total_marks, passed, submitted_at')
+        .eq('student_id', profile.id)
+        .order('submitted_at', { ascending: false })
 
       if (attemptsResponse.error) {
         setErrorMessage(attemptsResponse.error.message)
-        setExams((examsResponse.data ?? []) as ApprovedExam[])
+        setTests((testsResponse.data ?? []) as ApprovedExam[])
         setAttemptMap({})
         return
       }
 
-      setExams((examsResponse.data ?? []) as ApprovedExam[])
+      setTests((testsResponse.data ?? []) as ApprovedExam[])
       setAttemptMap(
         buildAttemptMap(
           (attemptsResponse.data ?? []) as ExamAttemptSummary[],
@@ -169,10 +139,10 @@ function StudentAvailableExamsPage({
       const message =
         error instanceof Error
           ? error.message
-          : 'Unable to load available exams.'
+          : 'Unable to load available tests.'
 
       setErrorMessage(message)
-      setExams([])
+      setTests([])
       setAttemptMap({})
     } finally {
       setIsLoading(false)
@@ -180,7 +150,7 @@ function StudentAvailableExamsPage({
   }
 
   useEffect(() => {
-    void loadApprovedExams()
+    void loadApprovedTests()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile.id])
 
@@ -189,8 +159,8 @@ function StudentAvailableExamsPage({
       <main className="page-shell">
         <section className="placeholder-card">
           <Loader2 size={34} className="spin-icon" />
-          <h1>Loading Available Exams</h1>
-          <p>Please wait while we fetch approved exams.</p>
+          <h1>Loading Available Tests</h1>
+          <p>Please wait while we fetch approved tests.</p>
         </section>
       </main>
     )
@@ -200,11 +170,11 @@ function StudentAvailableExamsPage({
     <main className="page-shell">
       <section className="dashboard-header">
         <div>
-          <p className="eyebrow">Student Workspace</p>
-          <h1>Available Exams</h1>
+          <p className="eyebrow">Test Taker Workspace</p>
+          <h1>Available Tests</h1>
           <p>
-            All admin-approved exams are visible here. Your result is calculated
-            only for your own attempt and does not affect other students.
+            All admin-approved tests are visible here. Your result is calculated
+            only for your own attempt and does not affect other test takers.
           </p>
         </div>
 
@@ -212,7 +182,7 @@ function StudentAvailableExamsPage({
           <button
             type="button"
             className="secondary-button"
-            onClick={() => void loadApprovedExams()}
+            onClick={() => void loadApprovedTests()}
           >
             <RefreshCcw size={18} />
             Refresh
@@ -224,27 +194,27 @@ function StudentAvailableExamsPage({
         <div className="alert-message alert-error">{errorMessage}</div>
       ) : null}
 
-      {exams.length === 0 ? (
+      {tests.length === 0 ? (
         <section className="placeholder-card">
           <ClipboardList size={42} />
-          <h2>No approved exams available</h2>
+          <h2>No approved tests available</h2>
           <p>
-            Exams will appear here only after an admin approves exams published
-            by tutors.
+            Tests will appear here only after an admin approves tests published
+            by Test Creators.
           </p>
         </section>
       ) : (
         <section className="card-grid">
-          {exams.map((exam) => {
-            const studentAttempt = attemptMap[exam.id]
-            const hasAttempted = Boolean(studentAttempt)
+          {tests.map((test) => {
+            const testAttempt = attemptMap[test.id]
+            const hasAttempted = Boolean(testAttempt)
 
             return (
-              <article className="exam-card" key={exam.id}>
+              <article className="exam-card" key={test.id}>
                 <div className="exam-card-header">
                   <div>
-                    <h2>{exam.title}</h2>
-                    <p>{exam.description || 'No description added.'}</p>
+                    <h2>{test.title}</h2>
+                    <p>{test.description || 'No description added.'}</p>
                   </div>
 
                   <span className="status-pill status-approved">
@@ -258,15 +228,15 @@ function StudentAvailableExamsPage({
                     <span>Total Time</span>
                     <strong>
                       <Timer size={16} />
-                      {exam.total_time_minutes} minutes
+                      {test.total_time_minutes} minutes
                     </strong>
                   </div>
 
                   <div>
-                    <span>Passing Marks</span>
+                    <span>Passing Percentage</span>
                     <strong>
                       <Trophy size={16} />
-                      {exam.passing_marks}
+                      {test.passing_marks}%
                     </strong>
                   </div>
 
@@ -274,7 +244,7 @@ function StudentAvailableExamsPage({
                     <span>Your Status</span>
                     <strong>
                       {hasAttempted
-                        ? studentAttempt?.hasPassed
+                        ? testAttempt?.hasPassed
                           ? 'Passed'
                           : 'Attempted'
                         : 'Not Attempted'}
@@ -284,15 +254,15 @@ function StudentAvailableExamsPage({
 
                 {hasAttempted ? (
                   <div className="alert-message alert-success">
-                    Your attempts: {studentAttempt.totalAttempts}. Best score:{' '}
-                    {studentAttempt.bestScore}. Latest result:{' '}
-                    {studentAttempt.latestAttempt?.passed ? 'Pass' : 'Fail'}.
+                    Your attempts: {testAttempt.totalAttempts}. Best score:{' '}
+                    {testAttempt.bestScore}. Latest result:{' '}
+                    {testAttempt.latestAttempt?.passed ? 'Pass' : 'Fail'}.
                   </div>
                 ) : null}
 
                 <div className="exam-card-actions">
                   <Link
-                    to={`/student/exam/${exam.id}/attempt`}
+                    to={`/student/exam/${test.id}/attempt`}
                     className="primary-button"
                   >
                     {hasAttempted ? (
@@ -303,7 +273,7 @@ function StudentAvailableExamsPage({
                     ) : (
                       <>
                         <BookOpen size={18} />
-                        Start Exam
+                        Start Test
                       </>
                     )}
                   </Link>

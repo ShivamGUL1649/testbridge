@@ -119,15 +119,15 @@ function ExamAttemptPage({ profile }: ExamAttemptPageProps) {
     return questions.reduce((total, question) => total + question.marks, 0)
   }, [questions])
 
-  async function loadExamForAttempt() {
+  async function loadTestForAttempt() {
     if (!examId) {
-      setErrorMessage('Exam ID is missing.')
+      setErrorMessage('Test ID is missing.')
       setIsLoading(false)
       return
     }
 
     if (!profile?.id) {
-      setErrorMessage('Student profile is missing. Please logout and login again.')
+      setErrorMessage('Test Taker profile is missing. Please logout and login again.')
       setIsLoading(false)
       return
     }
@@ -209,7 +209,7 @@ function ExamAttemptPage({ profile }: ExamAttemptPageProps) {
       const message =
         error instanceof Error
           ? error.message
-          : 'Unable to load exam attempt.'
+          : 'Unable to load test attempt.'
 
       setErrorMessage(message)
       setExam(null)
@@ -246,7 +246,7 @@ function ExamAttemptPage({ profile }: ExamAttemptPageProps) {
     }
 
     if (questions.length === 0) {
-      setErrorMessage('No questions are available for this exam.')
+      setErrorMessage('No questions are available for this test.')
       return
     }
 
@@ -322,15 +322,15 @@ function ExamAttemptPage({ profile }: ExamAttemptPageProps) {
         replace: true,
         state: {
           message: isAutoSubmit
-            ? 'Exam time completed. Your attempt was auto-submitted.'
-            : 'Exam submitted successfully.',
+            ? 'Test time completed. Your attempt was auto-submitted.'
+            : 'Test submitted successfully.',
         },
       })
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
-          : 'Unable to submit exam attempt.'
+          : 'Unable to submit test attempt.'
 
       setErrorMessage(message)
     } finally {
@@ -339,7 +339,7 @@ function ExamAttemptPage({ profile }: ExamAttemptPageProps) {
   }
 
   useEffect(() => {
-    void loadExamForAttempt()
+    void loadTestForAttempt()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [examId, profile.id])
 
@@ -377,7 +377,7 @@ function ExamAttemptPage({ profile }: ExamAttemptPageProps) {
       <main className="page-shell">
         <section className="placeholder-card">
           <Loader2 size={34} className="spin-icon" />
-          <h1>Loading Exam</h1>
+          <h1>Loading Test</h1>
           <p>Please wait while we prepare your independent attempt.</p>
         </section>
       </main>
@@ -389,12 +389,12 @@ function ExamAttemptPage({ profile }: ExamAttemptPageProps) {
       <main className="page-shell">
         <section className="placeholder-card error-card">
           <AlertTriangle size={42} />
-          <h1>Unable to Start Exam</h1>
+          <h1>Unable to Start Test</h1>
           <p>{errorMessage}</p>
           <button
             type="button"
             className="primary-button"
-            onClick={() => void loadExamForAttempt()}
+            onClick={() => void loadTestForAttempt()}
           >
             Retry
           </button>
@@ -408,8 +408,8 @@ function ExamAttemptPage({ profile }: ExamAttemptPageProps) {
       <main className="page-shell">
         <section className="placeholder-card">
           <AlertTriangle size={42} />
-          <h1>Exam Not Available</h1>
-          <p>This exam is not approved or questions are not available.</p>
+          <h1>Test Not Available</h1>
+          <p>This test is not approved or questions are not available.</p>
         </section>
       </main>
     )
@@ -466,7 +466,7 @@ function ExamAttemptPage({ profile }: ExamAttemptPageProps) {
 
       <section className="exam-attempt-header">
         <div>
-          <p className="eyebrow">Student Exam Attempt</p>
+          <p className="eyebrow">Test Taker Attempt</p>
           <h1>{exam.title}</h1>
           <p>{exam.description || 'Complete all questions before timer ends.'}</p>
         </div>
@@ -558,7 +558,7 @@ function ExamAttemptPage({ profile }: ExamAttemptPageProps) {
           <CheckCircle2 size={22} />
           <p>
             This submission is saved only for <strong>{profile.name}</strong>.
-            Other students can attempt the same exam independently.
+            Other test takers can attempt the same test independently.
           </p>
         </div>
 
@@ -573,7 +573,7 @@ function ExamAttemptPage({ profile }: ExamAttemptPageProps) {
           ) : (
             <Send size={18} />
           )}
-          {isSubmitting ? 'Submitting...' : 'Submit Exam'}
+          {isSubmitting ? 'Submitting...' : 'Submit Test'}
         </button>
       </section>
     </main>

@@ -94,7 +94,7 @@ function LoginPage({ onLoginSuccess }: LoginPageProps) {
         <h1>Login to TestBridge</h1>
 
         <p>
-          Login as student, tutor, or admin to continue your examination
+          Login as Test Taker, Test Creator, or Admin to continue your testing
           workflow.
         </p>
 

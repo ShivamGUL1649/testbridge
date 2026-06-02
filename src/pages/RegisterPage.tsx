@@ -98,8 +98,8 @@ function RegisterPage({ onRegisterSuccess }: RegisterPageProps) {
         <h1>Register on TestBridge</h1>
 
         <p>
-          Create your account as a student or tutor. Admin access should be
-          assigned carefully from Supabase.
+          Create your account as a Test Taker or Test Creator. Admin access is
+          assigned separately by the platform owner.
         </p>
 
         {errorMessage ? (
@@ -158,8 +158,8 @@ function RegisterPage({ onRegisterSuccess }: RegisterPageProps) {
               onChange={(event) => setRole(event.target.value as UserRole)}
               disabled={isLoading}
             >
-              <option value="STUDENT">Student</option>
-              <option value="TUTOR">Tutor</option>
+              <option value="STUDENT">Test Taker</option>
+              <option value="TUTOR">Test Creator</option>
             </select>
           </label>
 

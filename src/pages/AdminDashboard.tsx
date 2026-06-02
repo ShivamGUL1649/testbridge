@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import {
   ClipboardCheck,
+  ClipboardList,
   ShieldCheck,
   Users,
 } from 'lucide-react'
@@ -19,105 +20,47 @@ function AdminDashboard({ profile }: AdminDashboardProps) {
           <p className="eyebrow">Admin Dashboard</p>
           <h1>Welcome, {profile.name}</h1>
           <p>
-            Review tutor-published exams, approve valid exams, and reject exams
-            that need correction before students can access them.
+            Review tests submitted by Test Creators, approve or reject tests,
+            and manage platform quality before tests are visible to Test Takers.
+          </p>
+        </div>
+      </section>
+
+      <section className="dashboard-grid">
+        <Link to="/admin/exams/pending" className="dashboard-card">
+          <ClipboardCheck size={34} />
+          <h2>Manage Tests</h2>
+          <p>
+            Review pending, approved, rejected, and draft tests from Test
+            Creators.
+          </p>
+        </Link>
+
+        <div className="dashboard-card">
+          <ShieldCheck size={34} />
+          <h2>Approval Control</h2>
+          <p>
+            Only admin-approved tests become visible to Test Takers.
           </p>
         </div>
 
-        <Link to="/admin/exams/pending" className="primary-button">
-          <ClipboardCheck size={18} />
-          Pending Approvals
-        </Link>
-      </section>
+        <div className="dashboard-card">
+          <ClipboardList size={34} />
+          <h2>Test Quality</h2>
+          <p>
+            Check test details, questions, passing percentage, and readiness
+            before approval.
+          </p>
+        </div>
 
-      <section className="stats-grid">
-        <article className="stat-card">
-          <span>Role</span>
-          <strong>Admin</strong>
-        </article>
-
-        <article className="stat-card">
-          <span>Approval Flow</span>
-          <strong>Required</strong>
-        </article>
-
-        <article className="stat-card">
-          <span>Student Access</span>
-          <strong>Approved</strong>
-        </article>
-      </section>
-
-      <section className="content-grid">
-        <article className="content-card">
-          <div className="section-title-row">
-            <div>
-              <h2>Admin Actions</h2>
-              <p>
-                Admin approval controls student visibility. Students can see
-                only APPROVED exams.
-              </p>
-            </div>
-          </div>
-
-          <div className="exam-list">
-            <article className="exam-card">
-              <div className="exam-card-main">
-                <div className="exam-icon">
-                  <ClipboardCheck size={22} />
-                </div>
-
-                <div>
-                  <div className="exam-title-row">
-                    <h3>Pending Exam Approvals</h3>
-                    <span className="status-pill status-pending">
-                      Review
-                    </span>
-                  </div>
-
-                  <p className="exam-description">
-                    Approve or reject exams submitted by tutors. Approved exams
-                    become visible to students.
-                  </p>
-                </div>
-              </div>
-
-              <div className="exam-actions">
-                <Link to="/admin/exams/pending" className="primary-button">
-                  <ShieldCheck size={17} />
-                  Review Exams
-                </Link>
-              </div>
-            </article>
-
-            <article className="exam-card">
-              <div className="exam-card-main">
-                <div className="exam-icon">
-                  <Users size={22} />
-                </div>
-
-                <div>
-                  <div className="exam-title-row">
-                    <h3>User Governance</h3>
-                    <span className="status-pill status-draft">
-                      MVP Later
-                    </span>
-                  </div>
-
-                  <p className="exam-description">
-                    User management, role updates, and audit views can be added
-                    as a future admin enhancement.
-                  </p>
-                </div>
-              </div>
-
-              <div className="exam-actions">
-                <button type="button" className="secondary-button" disabled>
-                  Coming Soon
-                </button>
-              </div>
-            </article>
-          </div>
-        </article>
+        <div className="dashboard-card">
+          <Users size={34} />
+          <h2>User Roles</h2>
+          <p>
+            Test Creators create tests. Test Takers attempt approved tests.
+            Admin controls publishing.
+          </p>
+        </div>
       </section>
     </main>
   )

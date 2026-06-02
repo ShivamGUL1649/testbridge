@@ -1,5 +1,12 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom'
-import { GraduationCap, LogOut } from 'lucide-react'
+import {
+  BookOpenCheck,
+  ClipboardList,
+  Home,
+  LayoutDashboard,
+  LogOut,
+  ShieldCheck,
+} from 'lucide-react'
 
 import { supabase } from '../lib/supabaseClient'
 import type { UserProfile } from '../types'
@@ -8,69 +15,100 @@ type NavbarProps = {
   profile: UserProfile | null
 }
 
+function getRoleLabel(role: string): string {
+  if (role === 'ADMIN') return 'Admin'
+  if (role === 'TUTOR') return 'Test Creator'
+  if (role === 'STUDENT') return 'Test Taker'
+  return role
+}
+
 function Navbar({ profile }: NavbarProps) {
   const navigate = useNavigate()
 
   async function handleLogout() {
     await supabase.auth.signOut()
+    window.localStorage.clear()
+    window.sessionStorage.clear()
     navigate('/login', { replace: true })
-  }
-
-  function getDashboardPath() {
-    if (profile?.role === 'ADMIN') return '/admin'
-    if (profile?.role === 'TUTOR') return '/tutor'
-    return '/student'
   }
 
   return (
     <header className="navbar">
       <Link to="/" className="navbar-brand">
-        <span className="navbar-brand-icon">
-          <GraduationCap size={24} />
-        </span>
-        <span>TestBridge</span>
+        <div className="navbar-brand-icon">
+          <BookOpenCheck size={24} />
+        </div>
+
+        <div>
+          <strong>TestBridge</strong>
+        </div>
       </Link>
 
-      {profile ? (
-        <>
-          <nav className="navbar-links">
-            <NavLink to={getDashboardPath()} className="nav-link">
+      <nav className="navbar-links">
+        <NavLink to="/" className="nav-link">
+          <Home size={17} />
+          Home
+        </NavLink>
+
+        {profile?.role === 'STUDENT' ? (
+          <>
+            <NavLink to="/student" className="nav-link">
+              <LayoutDashboard size={17} />
               Dashboard
             </NavLink>
 
-            {profile.role === 'STUDENT' ? (
-              <>
-                <NavLink to="/student/exams" className="nav-link">
-                  Exams
-                </NavLink>
-                <NavLink to="/student/results" className="nav-link">
-                  Results
-                </NavLink>
-              </>
-            ) : null}
+            <NavLink to="/student/exams" className="nav-link">
+              <ClipboardList size={17} />
+              Available Tests
+            </NavLink>
 
-            {profile.role === 'TUTOR' ? (
-              <>
-                <NavLink to="/tutor/exam/create" className="nav-link">
-                  Create Exam
-                </NavLink>
-                <NavLink to="/tutor/exams" className="nav-link">
-                  My Exams
-                </NavLink>
-              </>
-            ) : null}
+            <NavLink to="/student/results" className="nav-link">
+              <BookOpenCheck size={17} />
+              My Results
+            </NavLink>
+          </>
+        ) : null}
 
-            {profile.role === 'ADMIN' ? (
-              <NavLink to="/admin/exams/pending" className="nav-link">
-                Pending Exams
-              </NavLink>
-            ) : null}
-          </nav>
+        {profile?.role === 'TUTOR' ? (
+          <>
+            <NavLink to="/tutor" className="nav-link">
+              <LayoutDashboard size={17} />
+              Dashboard
+            </NavLink>
 
-          <div className="navbar-user">
+            <NavLink to="/tutor/exams" className="nav-link">
+              <ClipboardList size={17} />
+              My Tests
+            </NavLink>
+
+            <NavLink to="/tutor/exam/create" className="nav-link">
+              <BookOpenCheck size={17} />
+              Create Test
+            </NavLink>
+          </>
+        ) : null}
+
+        {profile?.role === 'ADMIN' ? (
+          <>
+            <NavLink to="/admin" className="nav-link">
+              <LayoutDashboard size={17} />
+              Dashboard
+            </NavLink>
+
+            <NavLink to="/admin/exams/pending" className="nav-link">
+              <ShieldCheck size={17} />
+              Manage Tests
+            </NavLink>
+          </>
+        ) : null}
+      </nav>
+
+      <div className="navbar-user">
+        {profile ? (
+          <>
             <div className="user-pill">
               <strong>{profile.name}</strong>
-              <span>{profile.role}</span>
+              <span>{getRoleLabel(profile.role)}</span>
             </div>
 
             <button
@@ -78,21 +116,22 @@ function Navbar({ profile }: NavbarProps) {
               className="secondary-button"
               onClick={() => void handleLogout()}
             >
-              <LogOut size={16} />
+              <LogOut size={17} />
               Logout
             </button>
-          </div>
-        </>
-      ) : (
-        <nav className="navbar-links">
-          <NavLink to="/login" className="nav-link">
-            Login
-          </NavLink>
-          <NavLink to="/register" className="nav-link">
-            Register
-          </NavLink>
-        </nav>
-      )}
+          </>
+        ) : (
+          <>
+            <Link to="/login" className="secondary-button">
+              Login
+            </Link>
+
+            <Link to="/register" className="primary-button">
+              Register
+            </Link>
+          </>
+        )}
+      </div>
     </header>
   )
 }

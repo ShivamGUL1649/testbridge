@@ -84,7 +84,7 @@ function TutorExamsPage({ profile }: TutorExamsPageProps) {
 
   async function loadTutorExams() {
     if (!profile?.id) {
-      setErrorMessage('Tutor profile is missing. Please logout and login again.')
+      setErrorMessage('Test Creator profile is missing. Please logout and login again.')
       setIsLoading(false)
       return
     }
@@ -111,7 +111,7 @@ function TutorExamsPage({ profile }: TutorExamsPageProps) {
       setExams((data ?? []) as TutorExam[])
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : 'Unable to load tutor exams.'
+        error instanceof Error ? error.message : 'Unable to load tests.'
 
       setErrorMessage(message)
       setExams([])
@@ -140,13 +140,13 @@ function TutorExamsPage({ profile }: TutorExamsPageProps) {
         return
       }
 
-      setSuccessMessage('Exam published for admin approval.')
+      setSuccessMessage('Test published for admin approval.')
       await loadTutorExams()
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
-          : 'Unable to publish exam for approval.'
+          : 'Unable to publish test for approval.'
 
       setErrorMessage(message)
     } finally {
@@ -156,7 +156,7 @@ function TutorExamsPage({ profile }: TutorExamsPageProps) {
 
   async function handleDeleteExam(exam: TutorExam) {
     const confirmed = window.confirm(
-      `Are you sure you want to delete "${exam.title}"?\n\nThis will permanently delete the exam and its questions.`,
+      `Are you sure you want to delete "${exam.title}"?\n\nThis will permanently delete the test and its questions.`,
     )
 
     if (!confirmed) {
@@ -179,11 +179,11 @@ function TutorExamsPage({ profile }: TutorExamsPageProps) {
         return
       }
 
-      setSuccessMessage('Exam deleted successfully.')
+      setSuccessMessage('Test deleted successfully.')
       await loadTutorExams()
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : 'Unable to delete exam.'
+        error instanceof Error ? error.message : 'Unable to delete test.'
 
       setErrorMessage(message)
     } finally {
@@ -201,8 +201,8 @@ function TutorExamsPage({ profile }: TutorExamsPageProps) {
       <main className="page-shell">
         <section className="placeholder-card">
           <Loader2 size={34} className="spin-icon" />
-          <h1>Loading My Exams</h1>
-          <p>Please wait while we fetch your exams.</p>
+          <h1>Loading My Tests</h1>
+          <p>Please wait while we fetch your tests.</p>
         </section>
       </main>
     )
@@ -212,11 +212,11 @@ function TutorExamsPage({ profile }: TutorExamsPageProps) {
     <main className="page-shell">
       <section className="dashboard-header">
         <div>
-          <p className="eyebrow">Tutor Workspace</p>
-          <h1>My Exams</h1>
+          <p className="eyebrow">Test Creator Workspace</p>
+          <h1>My Tests</h1>
           <p>
-            Manage only exams created by you. You can edit questions, publish,
-            or delete your own exams.
+            Manage only tests created by you. You can edit questions, publish,
+            or delete your own tests.
           </p>
         </div>
 
@@ -232,7 +232,7 @@ function TutorExamsPage({ profile }: TutorExamsPageProps) {
 
           <Link to="/tutor/exam/create" className="primary-button">
             <FilePlus2 size={18} />
-            Create New Exam
+            Create New Test
           </Link>
         </div>
       </section>
@@ -248,12 +248,12 @@ function TutorExamsPage({ profile }: TutorExamsPageProps) {
       {exams.length === 0 ? (
         <section className="placeholder-card">
           <BookOpen size={42} />
-          <h2>No exams created yet</h2>
-          <p>Create your first exam and add questions for students.</p>
+          <h2>No tests created yet</h2>
+          <p>Create your first test and add questions for test takers.</p>
 
           <Link to="/tutor/exam/create" className="primary-button">
             <FilePlus2 size={18} />
-            Create New Exam
+            Create New Test
           </Link>
         </section>
       ) : (

@@ -1,39 +1,41 @@
-import { Navigate } from "react-router-dom";
-import Loading from "./Loading";
-import type { UserProfile, UserRole } from "../types";
+import { Navigate } from 'react-router-dom'
 
-interface ProtectedRouteProps {
-  profile: UserProfile | null;
-  isLoading: boolean;
-  allowedRoles: UserRole[];
-  children: React.ReactNode;
+import type { UserProfile, UserRole } from '../types'
+
+type ProtectedRouteProps = {
+  profile: UserProfile | null
+  allowedRoles: UserRole[]
+  isLoading: boolean
+  children: React.ReactNode
 }
 
-export default function ProtectedRoute({
+function getDefaultDashboardPath(role: UserRole): string {
+  if (role === 'ADMIN') return '/admin'
+  if (role === 'TUTOR') return '/tutor'
+  if (role === 'STUDENT') return '/student'
+
+  return '/'
+}
+
+function ProtectedRoute({
   profile,
-  isLoading,
   allowedRoles,
-  children
+  isLoading,
+  children,
 }: ProtectedRouteProps) {
   if (isLoading) {
-    return <Loading />;
+    return null
   }
 
   if (!profile) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login" replace />
   }
 
   if (!allowedRoles.includes(profile.role)) {
-    if (profile.role === "ADMIN") {
-      return <Navigate to="/admin/dashboard" replace />;
-    }
-
-    if (profile.role === "TUTOR") {
-      return <Navigate to="/tutor/dashboard" replace />;
-    }
-
-    return <Navigate to="/student/dashboard" replace />;
+    return <Navigate to={getDefaultDashboardPath(profile.role)} replace />
   }
 
-  return <>{children}</>;
+  return <>{children}</>
 }
+
+export default ProtectedRoute

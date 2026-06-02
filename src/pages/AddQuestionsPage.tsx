@@ -93,10 +93,10 @@ function AddQuestionsPage({ profile }: AddQuestionsPageProps) {
   const [successMessage, setSuccessMessage] = useState('')
 
   const isAdmin = profile.role === 'ADMIN'
-  const isTutor = profile.role === 'TUTOR'
+  const isTestCreator = profile.role === 'TUTOR'
 
   const backLink = isAdmin ? '/admin/exams/pending' : '/tutor/exams'
-  const backLabel = isAdmin ? 'Back to Admin Exams' : 'Back to My Exams'
+  const backLabel = isAdmin ? 'Back to Manage Tests' : 'Back to My Tests'
 
   function updateFormField<Key extends keyof QuestionFormState>(
     key: Key,
@@ -131,7 +131,7 @@ function AddQuestionsPage({ profile }: AddQuestionsPageProps) {
 
   async function loadExamAndQuestions() {
     if (!examId) {
-      setErrorMessage('Exam ID is missing.')
+      setErrorMessage('Test ID is missing.')
       setIsLoading(false)
       return
     }
@@ -148,7 +148,7 @@ function AddQuestionsPage({ profile }: AddQuestionsPageProps) {
         )
         .eq('id', examId)
 
-      if (isTutor) {
+      if (isTestCreator) {
         examQuery.eq('created_by', profile.id)
       }
 
@@ -182,7 +182,7 @@ function AddQuestionsPage({ profile }: AddQuestionsPageProps) {
       const message =
         error instanceof Error
           ? error.message
-          : 'Unable to load exam questions.'
+          : 'Unable to load test questions.'
 
       setErrorMessage(message)
       setExam(null)
@@ -196,7 +196,7 @@ function AddQuestionsPage({ profile }: AddQuestionsPageProps) {
     event.preventDefault()
 
     if (!examId || !exam) {
-      setErrorMessage('Exam details are missing.')
+      setErrorMessage('Test details are missing.')
       return
     }
 
@@ -352,13 +352,13 @@ function AddQuestionsPage({ profile }: AddQuestionsPageProps) {
         return
       }
 
-      setSuccessMessage('Exam published for admin approval.')
+      setSuccessMessage('Test published for admin approval.')
       await loadExamAndQuestions()
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
-          : 'Unable to publish exam for approval.'
+          : 'Unable to publish test for approval.'
 
       setErrorMessage(message)
     } finally {
@@ -377,7 +377,7 @@ function AddQuestionsPage({ profile }: AddQuestionsPageProps) {
         <section className="placeholder-card">
           <Loader2 size={34} className="spin-icon" />
           <h1>Loading Questions</h1>
-          <p>Please wait while we load exam questions.</p>
+          <p>Please wait while we load test questions.</p>
         </section>
       </main>
     )
@@ -388,7 +388,7 @@ function AddQuestionsPage({ profile }: AddQuestionsPageProps) {
       <main className="page-shell">
         <section className="placeholder-card error-card">
           <AlertTriangle size={42} />
-          <h1>Unable to Load Exam</h1>
+          <h1>Unable to Load Test</h1>
           <p>{errorMessage}</p>
 
           <button
@@ -408,8 +408,8 @@ function AddQuestionsPage({ profile }: AddQuestionsPageProps) {
       <main className="page-shell">
         <section className="placeholder-card">
           <AlertTriangle size={42} />
-          <h1>Exam Not Found</h1>
-          <p>This exam does not exist or you do not have permission.</p>
+          <h1>Test Not Found</h1>
+          <p>This test does not exist or you do not have permission.</p>
 
           <Link to={backLink} className="primary-button">
             {backLabel}
@@ -424,12 +424,12 @@ function AddQuestionsPage({ profile }: AddQuestionsPageProps) {
       <section className="dashboard-header">
         <div>
           <p className="eyebrow">
-            {isAdmin ? 'Admin Exam Editor' : 'Tutor Exam Editor'}
+            {isAdmin ? 'Admin Test Editor' : 'Test Creator Editor'}
           </p>
           <h1>{exam.title}</h1>
           <p>
             {isAdmin
-              ? 'Admin can edit questions for any exam.'
+              ? 'Admin can edit questions for any test.'
               : 'You can add, edit, or delete questions for tests created by you.'}
           </p>
         </div>
@@ -449,7 +449,8 @@ function AddQuestionsPage({ profile }: AddQuestionsPageProps) {
             Refresh
           </button>
 
-          {isTutor && (exam.status === 'DRAFT' || exam.status === 'REJECTED') ? (
+          {isTestCreator &&
+          (exam.status === 'DRAFT' || exam.status === 'REJECTED') ? (
             <button
               type="button"
               className="primary-button"
@@ -635,7 +636,7 @@ function AddQuestionsPage({ profile }: AddQuestionsPageProps) {
         <article className="content-card">
           <div className="section-title-row">
             <div>
-              <h2>Exam Summary</h2>
+              <h2>Test Summary</h2>
               <p>Basic details and current question count.</p>
             </div>
           </div>
@@ -664,8 +665,8 @@ function AddQuestionsPage({ profile }: AddQuestionsPageProps) {
 
           <div className="alert-message alert-success create-exam-note">
             <ClipboardList size={18} />
-            Correct answers and explanations are visible only after the student
-            submits the exam.
+            Correct answers and explanations are visible only after the test
+            taker submits the test.
           </div>
         </article>
       </section>

@@ -1,11 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
-  AlertTriangle,
   ArrowLeft,
   CheckCircle2,
   Loader2,
-  Percent,
   Trophy,
   XCircle,
 } from 'lucide-react'
@@ -19,17 +17,32 @@ type StudentResultReviewPageProps = {
 
 type OptionKey = 'A' | 'B' | 'C' | 'D'
 
-type ExamAttempt = {
+type AnswerDetail = {
+  question_id: string
+  selected_option: OptionKey | null
+  correct_option: OptionKey | null
+  is_correct: boolean
+  marks: number
+  earned_marks: number
+}
+
+type StoredAnswersObject = {
+  passing_percentage?: number
+  score_percentage?: number
+  total_questions?: number
+  answered_questions?: number
+  answer_details?: AnswerDetail[]
+}
+
+type ReviewAttempt = {
   id: string
   exam_id: string
   student_id: string
-  started_at: string
-  submitted_at: string | null
-  expires_at: string
   score: number
   total_marks: number
   passed: boolean
-  answers: unknown
+  submitted_at: string | null
+  answers: StoredAnswersObject | AnswerDetail[] | null
   exams?: {
     id: string
     title: string
@@ -38,9 +51,8 @@ type ExamAttempt = {
   } | null
 }
 
-type ExamQuestion = {
+type ReviewQuestion = {
   id: string
-  exam_id: string
   question_text: string
   option_a: string
   option_b: string
@@ -52,24 +64,7 @@ type ExamQuestion = {
   question_order: number
 }
 
-type AnswerDetail = {
-  question_id: string
-  selected_option: OptionKey | null
-  correct_option: OptionKey | null
-  is_correct: boolean
-  marks: number
-  earned_marks: number
-}
-
-type ParsedAttemptAnswers = {
-  passing_percentage: number
-  score_percentage: number
-  total_questions: number
-  answered_questions: number
-  answer_details: AnswerDetail[]
-}
-
-function normalizeOption(option: string | null | undefined): OptionKey | null {
+function normalizeOption(option: unknown): OptionKey | null {
   const value = String(option ?? '').trim().toUpperCase()
 
   if (value === 'A' || value === 'B' || value === 'C' || value === 'D') {
@@ -79,136 +74,49 @@ function normalizeOption(option: string | null | undefined): OptionKey | null {
   return null
 }
 
-function getOptionText(question: ExamQuestion, option: OptionKey | null): string {
-  if (option === 'A') return question.option_a
-  if (option === 'B') return question.option_b
-  if (option === 'C') return question.option_c
-  if (option === 'D') return question.option_d
-
-  return 'Not answered'
+function getOptionText(question: ReviewQuestion, optionKey: OptionKey): string {
+  if (optionKey === 'A') return question.option_a
+  if (optionKey === 'B') return question.option_b
+  if (optionKey === 'C') return question.option_c
+  return question.option_d
 }
 
-function parseAttemptAnswers(rawAnswers: unknown): ParsedAttemptAnswers {
-  const fallback: ParsedAttemptAnswers = {
-    passing_percentage: 0,
-    score_percentage: 0,
-    total_questions: 0,
-    answered_questions: 0,
-    answer_details: [],
+function getAnswerDetails(answers: ReviewAttempt['answers']): AnswerDetail[] {
+  if (!answers) return []
+
+  if (Array.isArray(answers)) {
+    return answers.map((answer) => ({
+      ...answer,
+      selected_option: normalizeOption(answer.selected_option),
+      correct_option: normalizeOption(answer.correct_option),
+    }))
   }
 
-  if (!rawAnswers) {
-    return fallback
+  if (Array.isArray(answers.answer_details)) {
+    return answers.answer_details.map((answer) => ({
+      ...answer,
+      selected_option: normalizeOption(answer.selected_option),
+      correct_option: normalizeOption(answer.correct_option),
+    }))
   }
 
-  if (Array.isArray(rawAnswers)) {
-    return {
-      ...fallback,
-      total_questions: rawAnswers.length,
-      answered_questions: rawAnswers.filter(
-        (answer) => normalizeOption(answer?.selected_option) !== null,
-      ).length,
-      answer_details: rawAnswers.map((answer) => ({
-        question_id: String(answer?.question_id ?? ''),
-        selected_option: normalizeOption(answer?.selected_option),
-        correct_option: normalizeOption(answer?.correct_option),
-        is_correct: Boolean(answer?.is_correct),
-        marks: Number(answer?.marks ?? 0),
-        earned_marks: Number(answer?.earned_marks ?? 0),
-      })),
-    }
-  }
+  return []
+}
 
-  if (typeof rawAnswers === 'object') {
-    const answersObject = rawAnswers as {
-      passing_percentage?: number
-      score_percentage?: number
-      total_questions?: number
-      answered_questions?: number
-      answer_details?: unknown
-    }
-
-    const answerDetails = Array.isArray(answersObject.answer_details)
-      ? answersObject.answer_details.map((answer) => {
-          const item = answer as {
-            question_id?: string
-            selected_option?: string | null
-            correct_option?: string | null
-            is_correct?: boolean
-            marks?: number
-            earned_marks?: number
-          }
-
-          return {
-            question_id: String(item.question_id ?? ''),
-            selected_option: normalizeOption(item.selected_option),
-            correct_option: normalizeOption(item.correct_option),
-            is_correct: Boolean(item.is_correct),
-            marks: Number(item.marks ?? 0),
-            earned_marks: Number(item.earned_marks ?? 0),
-          }
-        })
-      : []
-
-    return {
-      passing_percentage: Number(answersObject.passing_percentage ?? 0),
-      score_percentage: Number(answersObject.score_percentage ?? 0),
-      total_questions: Number(
-        answersObject.total_questions ?? answerDetails.length,
-      ),
-      answered_questions: Number(
-        answersObject.answered_questions ??
-          answerDetails.filter((answer) => answer.selected_option !== null)
-            .length,
-      ),
-      answer_details: answerDetails,
-    }
-  }
-
-  return fallback
+function getPercentage(score: number, totalMarks: number): number {
+  if (totalMarks <= 0) return 0
+  return Number(((score / totalMarks) * 100).toFixed(2))
 }
 
 function StudentResultReviewPage({ profile }: StudentResultReviewPageProps) {
   const { attemptId } = useParams()
 
-  const [attempt, setAttempt] = useState<ExamAttempt | null>(null)
-  const [questions, setQuestions] = useState<ExamQuestion[]>([])
+  const [attempt, setAttempt] = useState<ReviewAttempt | null>(null)
+  const [questions, setQuestions] = useState<ReviewQuestion[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
 
-  const parsedAnswers = useMemo(() => {
-    return parseAttemptAnswers(attempt?.answers)
-  }, [attempt])
-
-  const answerMap = useMemo(() => {
-    return parsedAnswers.answer_details.reduce<Record<string, AnswerDetail>>(
-      (accumulator, answer) => {
-        accumulator[answer.question_id] = answer
-        return accumulator
-      },
-      {},
-    )
-  }, [parsedAnswers.answer_details])
-
-  const calculatedScorePercentage = useMemo(() => {
-    if (!attempt || attempt.total_marks <= 0) {
-      return 0
-    }
-
-    return Number(((attempt.score / attempt.total_marks) * 100).toFixed(2))
-  }, [attempt])
-
-  const scorePercentage =
-    parsedAnswers.score_percentage > 0
-      ? parsedAnswers.score_percentage
-      : calculatedScorePercentage
-
-  const passingPercentage =
-    parsedAnswers.passing_percentage > 0
-      ? parsedAnswers.passing_percentage
-      : Number(attempt?.exams?.passing_marks ?? 0)
-
-  async function loadResultReview() {
+  async function loadReview() {
     if (!attemptId) {
       setErrorMessage('Attempt ID is missing.')
       setIsLoading(false)
@@ -216,7 +124,7 @@ function StudentResultReviewPage({ profile }: StudentResultReviewPageProps) {
     }
 
     if (!profile?.id) {
-      setErrorMessage('Student profile is missing. Please logout and login again.')
+      setErrorMessage('Test Taker profile is missing. Please logout and login again.')
       setIsLoading(false)
       return
     }
@@ -232,12 +140,10 @@ function StudentResultReviewPage({ profile }: StudentResultReviewPageProps) {
           id,
           exam_id,
           student_id,
-          started_at,
-          submitted_at,
-          expires_at,
           score,
           total_marks,
           passed,
+          submitted_at,
           answers,
           exams (
             id,
@@ -258,12 +164,12 @@ function StudentResultReviewPage({ profile }: StudentResultReviewPageProps) {
         return
       }
 
-      const loadedAttempt = attemptResponse.data as unknown as ExamAttempt
+      const loadedAttempt = attemptResponse.data as unknown as ReviewAttempt
 
       const questionsResponse = await supabase
         .from('exam_questions')
         .select(
-          'id, exam_id, question_text, option_a, option_b, option_c, option_d, correct_option, explanation, marks, question_order',
+          'id, question_text, option_a, option_b, option_c, option_d, correct_option, explanation, marks, question_order',
         )
         .eq('exam_id', loadedAttempt.exam_id)
         .order('question_order', { ascending: true })
@@ -275,20 +181,13 @@ function StudentResultReviewPage({ profile }: StudentResultReviewPageProps) {
         return
       }
 
-      const loadedQuestions = ((questionsResponse.data ??
-        []) as ExamQuestion[]).map((question) => ({
-        ...question,
-        correct_option:
-          normalizeOption(question.correct_option) ?? question.correct_option,
-      }))
-
       setAttempt(loadedAttempt)
-      setQuestions(loadedQuestions)
+      setQuestions((questionsResponse.data ?? []) as ReviewQuestion[])
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
-          : 'Unable to load result review.'
+          : 'Unable to load test review.'
 
       setErrorMessage(message)
       setAttempt(null)
@@ -299,7 +198,7 @@ function StudentResultReviewPage({ profile }: StudentResultReviewPageProps) {
   }
 
   useEffect(() => {
-    void loadResultReview()
+    void loadReview()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attemptId, profile.id])
 
@@ -308,55 +207,41 @@ function StudentResultReviewPage({ profile }: StudentResultReviewPageProps) {
       <main className="page-shell">
         <section className="placeholder-card">
           <Loader2 size={34} className="spin-icon" />
-          <h1>Loading Result Review</h1>
-          <p>Please wait while we prepare your answer review.</p>
+          <h1>Loading Review</h1>
+          <p>Please wait while we load your test review.</p>
         </section>
       </main>
     )
   }
 
-  if (errorMessage) {
+  if (errorMessage || !attempt) {
     return (
       <main className="page-shell">
         <section className="placeholder-card error-card">
-          <AlertTriangle size={42} />
+          <XCircle size={42} />
           <h1>Unable to Load Review</h1>
-          <p>{errorMessage}</p>
-
-          <button
-            type="button"
-            className="primary-button"
-            onClick={() => void loadResultReview()}
-          >
-            Retry
-          </button>
-        </section>
-      </main>
-    )
-  }
-
-  if (!attempt) {
-    return (
-      <main className="page-shell">
-        <section className="placeholder-card">
-          <AlertTriangle size={42} />
-          <h1>Result Not Found</h1>
-          <p>This attempt result was not found for your account.</p>
+          <p>{errorMessage || 'Review details are not available.'}</p>
 
           <Link to="/student/results" className="primary-button">
-            Back to Results
+            Back to My Results
           </Link>
         </section>
       </main>
     )
   }
 
+  const answerDetails = getAnswerDetails(attempt.answers)
+  const answerMap = new Map(
+    answerDetails.map((answer) => [answer.question_id, answer]),
+  )
+  const percentage = getPercentage(attempt.score, attempt.total_marks)
+
   return (
     <main className="page-shell">
       <section className="dashboard-header">
         <div>
-          <p className="eyebrow">Student Result Review</p>
-          <h1>{attempt.exams?.title ?? 'Exam Review'}</h1>
+          <p className="eyebrow">Test Review</p>
+          <h1>{attempt.exams?.title ?? 'Test Result Review'}</h1>
           <p>
             Review your selected answers, correct answers, marks, and
             explanations.
@@ -366,59 +251,55 @@ function StudentResultReviewPage({ profile }: StudentResultReviewPageProps) {
         <div className="dashboard-actions">
           <Link to="/student/results" className="secondary-button">
             <ArrowLeft size={18} />
-            Back to Results
+            Back to My Results
           </Link>
         </div>
       </section>
 
       <section className="attempt-summary-card">
         <div>
-          <span>Your Score</span>
+          <span>Status</span>
           <strong>
-            <Trophy size={16} />
+            {attempt.passed ? (
+              <>
+                <CheckCircle2 size={18} />
+                Pass
+              </>
+            ) : (
+              <>
+                <XCircle size={18} />
+                Fail
+              </>
+            )}
+          </strong>
+        </div>
+
+        <div>
+          <span>Score</span>
+          <strong>
+            <Trophy size={18} />
             {attempt.score}/{attempt.total_marks}
           </strong>
         </div>
 
         <div>
           <span>Percentage</span>
-          <strong>
-            <Percent size={16} />
-            {scorePercentage}%
-          </strong>
+          <strong>{percentage}%</strong>
         </div>
 
         <div>
           <span>Passing Percentage</span>
-          <strong>
-            <Percent size={16} />
-            {passingPercentage}%
-          </strong>
-        </div>
-
-        <div>
-          <span>Final Result</span>
-          <strong className={attempt.passed ? 'success-text' : 'danger-text'}>
-            {attempt.passed ? 'Pass' : 'Fail'}
-          </strong>
+          <strong>{attempt.exams?.passing_marks ?? 0}%</strong>
         </div>
       </section>
 
       <section className="question-list">
         {questions.map((question, index) => {
-          const savedAnswer = answerMap[question.id]
-
-          const selectedOption =
-            normalizeOption(savedAnswer?.selected_option) ?? null
-
+          const answer = answerMap.get(question.id)
+          const selectedOption = normalizeOption(answer?.selected_option)
           const correctOption =
-            normalizeOption(savedAnswer?.correct_option) ??
+            normalizeOption(answer?.correct_option) ??
             normalizeOption(question.correct_option)
-
-          const isCorrect =
-            selectedOption !== null &&
-            correctOption !== null &&
-            selectedOption === correctOption
 
           return (
             <article className="question-card review-question-card" key={question.id}>
@@ -430,51 +311,58 @@ function StudentResultReviewPage({ profile }: StudentResultReviewPageProps) {
 
                 <span
                   className={
-                    isCorrect
+                    answer?.is_correct
                       ? 'status-pill status-approved'
                       : 'status-pill status-rejected'
                   }
                 >
-                  {isCorrect ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
-                  {isCorrect ? 'Correct' : 'Incorrect'}
+                  {answer?.is_correct ? (
+                    <CheckCircle2 size={18} />
+                  ) : (
+                    <XCircle size={18} />
+                  )}
+                  {answer?.is_correct ? 'Correct' : 'Incorrect'}
                 </span>
               </div>
 
               <div className="review-option-list">
                 {(['A', 'B', 'C', 'D'] as OptionKey[]).map((optionKey) => {
-                  const optionText = getOptionText(question, optionKey)
-                  const isSelectedOption = selectedOption === optionKey
-                  const isCorrectOption = correctOption === optionKey
+                  const isCorrectAnswer = correctOption === optionKey
+                  const isSelectedAnswer = selectedOption === optionKey
+                  const isWrongSelected =
+                    isSelectedAnswer && selectedOption !== correctOption
 
-                  let optionClassName = 'review-option-row'
+                  let optionClass = 'review-option-row'
 
-                  if (isCorrectOption) {
-                    optionClassName += ' review-option-correct'
+                  if (isCorrectAnswer) {
+                    optionClass += ' review-option-correct'
                   }
 
-                  if (isSelectedOption && !isCorrectOption) {
-                    optionClassName += ' review-option-wrong'
+                  if (isSelectedAnswer) {
+                    optionClass += ' review-option-selected'
                   }
 
-                  if (isSelectedOption) {
-                    optionClassName += ' review-option-selected'
+                  if (isWrongSelected) {
+                    optionClass += ' review-option-wrong'
                   }
 
                   return (
-                    <div className={optionClassName} key={optionKey}>
+                    <div className={optionClass} key={optionKey}>
                       <div className="review-option-content">
-                        <span className="review-option-key">{optionKey})</span>
-                        <span className="review-option-text">{optionText}</span>
+                        <span className="review-option-key">{optionKey}</span>
+                        <span className="review-option-text">
+                          {getOptionText(question, optionKey)}
+                        </span>
                       </div>
 
                       <div className="review-option-badges">
-                        {isCorrectOption ? (
+                        {isCorrectAnswer ? (
                           <span className="review-badge review-badge-correct">
                             Correct Answer
                           </span>
                         ) : null}
 
-                        {isSelectedOption ? (
+                        {isSelectedAnswer ? (
                           <span className="review-badge review-badge-selected">
                             Your Answer
                           </span>
@@ -485,9 +373,16 @@ function StudentResultReviewPage({ profile }: StudentResultReviewPageProps) {
                 })}
               </div>
 
-              <div className="review-answer-row">
-                <div className="alert-message alert-warning">
-                  Your Answer:{' '}
+              <div className="exam-meta-grid">
+                <div>
+                  <span>Marks</span>
+                  <strong>
+                    {answer?.earned_marks ?? 0}/{question.marks}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>Your Answer</span>
                   <strong>
                     {selectedOption
                       ? `${selectedOption}) ${getOptionText(
@@ -498,8 +393,8 @@ function StudentResultReviewPage({ profile }: StudentResultReviewPageProps) {
                   </strong>
                 </div>
 
-                <div className="alert-message alert-success">
-                  Correct Answer:{' '}
+                <div>
+                  <span>Correct Answer</span>
                   <strong>
                     {correctOption
                       ? `${correctOption}) ${getOptionText(
@@ -515,15 +410,8 @@ function StudentResultReviewPage({ profile }: StudentResultReviewPageProps) {
                 <strong>Explanation:</strong>
                 <p>
                   {question.explanation ||
-                    'No explanation was added by the tutor.'}
+                    'No explanation was added for this question.'}
                 </p>
-              </div>
-
-              <div className="marks-summary">
-                <span>Marks</span>
-                <strong>
-                  {isCorrect ? question.marks : 0}/{question.marks}
-                </strong>
               </div>
             </article>
           )

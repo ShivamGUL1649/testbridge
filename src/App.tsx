@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   BrowserRouter,
+  Link,
   Navigate,
   Route,
   Routes,
@@ -35,20 +36,22 @@ function HomePage() {
     <main className="home-page">
       <section className="hero-section">
         <div className="hero-content">
-          <p className="eyebrow">TestBridge Online Examination System</p>
-          <h1>Secure online exams for Students, Tutors, and Admins.</h1>
+          <p className="eyebrow">TestBridge Online Testing Platform</p>
+          <h1>Secure online tests for Test Takers, Test Creators, and Admins.</h1>
+
           <p className="hero-description">
-            Create exams, approve assessments, attempt tests with timers,
+            Create tests, approve assessments, attempt tests with timers,
             calculate results, and review explanations after submission.
           </p>
 
           <div className="hero-actions">
-            <a href="/login" className="primary-button">
+            <Link to="/login" className="primary-button">
               Login
-            </a>
-            <a href="/register" className="secondary-button">
+            </Link>
+
+            <Link to="/register" className="secondary-button">
               Create Account
-            </a>
+            </Link>
           </div>
         </div>
 
@@ -59,18 +62,18 @@ function HomePage() {
 
           <div className="flow-list">
             <div className="flow-item">
-              <strong>Tutor</strong>
-              <span>Create exam in Draft mode</span>
+              <strong>Test Creator</strong>
+              <span>Create test in Draft mode</span>
             </div>
 
             <div className="flow-item">
               <strong>Admin</strong>
-              <span>Approve, edit, or delete exams</span>
+              <span>Approve, edit, or delete tests</span>
             </div>
 
             <div className="flow-item">
-              <strong>Student</strong>
-              <span>Attempt approved exams securely</span>
+              <strong>Test Taker</strong>
+              <span>Attempt approved tests securely</span>
             </div>
 
             <div className="flow-item">
