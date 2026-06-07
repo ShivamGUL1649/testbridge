@@ -30,6 +30,18 @@ import StudentAvailableExamsPage from './pages/StudentAvailableExamsPage'
 import ExamAttemptPage from './pages/ExamAttemptPage'
 import StudentResultsPage from './pages/StudentResultsPage'
 import StudentResultReviewPage from './pages/StudentResultReviewPage'
+import MaintenancePage from './pages/MaintenancePage'
+import AdminSettingsPage from './pages/AdminSettingsPage'
+
+type AppSettings = {
+  id: string
+  maintenance_mode: boolean
+  maintenance_message: string
+  updated_at: string
+}
+
+const defaultMaintenanceMessage =
+  'TestBridge is currently under maintenance. Please try again later.'
 
 function HomePage() {
   return (
@@ -114,6 +126,21 @@ async function loadUserProfile(user: User): Promise<UserProfile | null> {
   return data as unknown as UserProfile | null
 }
 
+async function loadAppSettings(): Promise<AppSettings | null> {
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('id, maintenance_mode, maintenance_message, updated_at')
+    .eq('id', 'global')
+    .maybeSingle()
+
+  if (error) {
+    console.error('Unable to load app settings:', error.message)
+    return null
+  }
+
+  return data as unknown as AppSettings | null
+}
+
 function getDashboardPath(profile: UserProfile | null): string {
   if (profile?.role === 'ADMIN') return '/admin'
   if (profile?.role === 'TUTOR') return '/tutor'
@@ -123,14 +150,22 @@ function getDashboardPath(profile: UserProfile | null): string {
 function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [appSettings, setAppSettings] = useState<AppSettings | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [startupError, setStartupError] = useState('')
+
+  const maintenanceMode = appSettings?.maintenance_mode ?? false
+  const maintenanceMessage =
+    appSettings?.maintenance_message || defaultMaintenanceMessage
 
   const loadAuthState = useCallback(async () => {
     setIsLoading(true)
     setStartupError('')
 
     try {
+      const loadedSettings = await loadAppSettings()
+      setAppSettings(loadedSettings)
+
       const {
         data: { session: currentSession },
         error,
@@ -202,11 +237,15 @@ function App() {
         if (!isMounted) return
 
         try {
-          const userProfile = await loadUserProfile(currentSession.user)
+          const [userProfile, loadedSettings] = await Promise.all([
+            loadUserProfile(currentSession.user),
+            loadAppSettings(),
+          ])
 
           if (!isMounted) return
 
           setProfile(userProfile)
+          setAppSettings(loadedSettings)
 
           if (!userProfile) {
             setStartupError(
@@ -276,6 +315,40 @@ function App() {
               </div>
             </section>
           </main>
+        </div>
+      </BrowserRouter>
+    )
+  }
+
+  if (maintenanceMode && profile?.role !== 'ADMIN') {
+    return (
+      <BrowserRouter>
+        <div className="app-container">
+          <Routes>
+            <Route
+              path="/login"
+              element={
+                session ? (
+                  <MaintenancePage
+                    message={maintenanceMessage}
+                    showLoginButton={false}
+                  />
+                ) : (
+                  <LoginPage onLoginSuccess={refreshAuthState} />
+                )
+              }
+            />
+
+            <Route
+              path="*"
+              element={
+                <MaintenancePage
+                  message={maintenanceMessage}
+                  showLoginButton={!session}
+                />
+              }
+            />
+          </Routes>
         </div>
       </BrowserRouter>
     )
@@ -463,6 +536,19 @@ function App() {
                 isLoading={false}
               >
                 <AddQuestionsPage profile={profile as UserProfile} />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/settings"
+            element={
+              <ProtectedRoute
+                profile={profile}
+                allowedRoles={['ADMIN']}
+                isLoading={false}
+              >
+                <AdminSettingsPage />
               </ProtectedRoute>
             }
           />

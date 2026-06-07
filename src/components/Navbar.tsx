@@ -5,6 +5,7 @@ import {
   Home,
   LayoutDashboard,
   LogOut,
+  Settings,
   ShieldCheck,
 } from 'lucide-react'
 
@@ -98,6 +99,11 @@ function Navbar({ profile }: NavbarProps) {
             <NavLink to="/admin/exams/pending" className="nav-link">
               <ShieldCheck size={17} />
               Manage Tests
+            </NavLink>
+
+            <NavLink to="/admin/settings" className="nav-link">
+              <Settings size={17} />
+              Settings
             </NavLink>
           </>
         ) : null}
