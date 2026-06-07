@@ -320,6 +320,12 @@ function App() {
     )
   }
 
+  /*
+    Maintenance Mode Rule:
+    - Admin can access full application.
+    - /login must always remain open so Admin can login.
+    - Non-admin users and public users see maintenance page.
+  */
   if (maintenanceMode && profile?.role !== 'ADMIN') {
     return (
       <BrowserRouter>
@@ -327,16 +333,7 @@ function App() {
           <Routes>
             <Route
               path="/login"
-              element={
-                session ? (
-                  <MaintenancePage
-                    message={maintenanceMessage}
-                    showLoginButton={false}
-                  />
-                ) : (
-                  <LoginPage onLoginSuccess={refreshAuthState} />
-                )
-              }
+              element={<LoginPage onLoginSuccess={refreshAuthState} />}
             />
 
             <Route
@@ -344,7 +341,7 @@ function App() {
               element={
                 <MaintenancePage
                   message={maintenanceMessage}
-                  showLoginButton={!session}
+                  showLoginButton
                 />
               }
             />
