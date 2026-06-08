@@ -33,18 +33,17 @@ type GenerateAiTestRequest = {
   prompt: string
 }
 
-type GeminiResponse = {
-  candidates?: Array<{
-    content?: {
-      parts?: Array<{
-        text?: string
-      }>
+type OpenAiChatResponse = {
+  choices?: Array<{
+    message?: {
+      content?: string
     }
   }>
 }
 
 const MAX_QUESTIONS = 50
 const BATCH_SIZE = 10
+const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -256,52 +255,60 @@ Return JSON in this exact format:
 `.trim()
 }
 
-async function callGemini(prompt: string): Promise<string> {
-  const geminiApiKey = getRequiredEnv('GEMINI_API_KEY')
-  const geminiModel = Deno.env.get('GEMINI_MODEL') || 'gemini-2.5-flash-lite'
+async function sleep(milliseconds: number): Promise<void> {
+  await new Promise((resolve) => window.setTimeout(resolve, milliseconds))
+}
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiApiKey}`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: prompt,
-              },
-            ],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.3,
-          topP: 0.85,
-          maxOutputTokens: 8192,
-          responseMimeType: 'application/json',
-        },
-      }),
+async function callOpenAi(prompt: string, retryCount = 0): Promise<string> {
+  const openAiApiKey = getRequiredEnv('OPENAI_API_KEY')
+  const openAiModel = Deno.env.get('OPENAI_MODEL') || 'gpt-4o-mini'
+
+  const response = await fetch(OPENAI_API_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${openAiApiKey}`,
+      'Content-Type': 'application/json',
     },
-  )
+    body: JSON.stringify({
+      model: openAiModel,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are a strict JSON generator for assessment questions. Return only valid JSON.',
+        },
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+      temperature: 0.3,
+      response_format: {
+        type: 'json_object',
+      },
+    }),
+  })
 
   if (!response.ok) {
     const errorText = await response.text()
-    throw new Error(`Gemini API failed: ${errorText}`)
+
+    if (
+      (response.status === 429 || response.status >= 500) &&
+      retryCount < 2
+    ) {
+      await sleep(2000 * (retryCount + 1))
+      return callOpenAi(prompt, retryCount + 1)
+    }
+
+    throw new Error(`OpenAI API failed: ${errorText}`)
   }
 
-  const data = (await response.json()) as GeminiResponse
+  const data = (await response.json()) as OpenAiChatResponse
 
-  const text =
-    data.candidates?.[0]?.content?.parts
-      ?.map((part) => part.text || '')
-      .join('\n')
-      .trim() || ''
+  const text = data.choices?.[0]?.message?.content?.trim() || ''
 
   if (!text) {
-    throw new Error('Gemini returned empty response.')
+    throw new Error('OpenAI returned empty response.')
   }
 
   return text
@@ -325,7 +332,7 @@ async function generateQuestionsInBatches(
       startQuestionNumber,
     )
 
-    const aiText = await callGemini(batchPrompt)
+    const aiText = await callOpenAi(batchPrompt)
     const parsedAiResult = extractJsonFromText(aiText)
 
     const validatedBatchQuestions = validateGeneratedQuestions(
