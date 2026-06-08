@@ -1,6 +1,7 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import {
   BookOpenCheck,
+  Bot,
   ClipboardList,
   Home,
   LayoutDashboard,
@@ -99,6 +100,11 @@ function Navbar({ profile }: NavbarProps) {
             <NavLink to="/admin/exams/pending" className="nav-link">
               <ShieldCheck size={17} />
               Manage Tests
+            </NavLink>
+
+            <NavLink to="/admin/ai-test-generator" className="nav-link">
+              <Bot size={17} />
+              AI Test Generator
             </NavLink>
 
             <NavLink to="/admin/settings" className="nav-link">

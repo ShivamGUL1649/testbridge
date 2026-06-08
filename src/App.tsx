@@ -32,6 +32,7 @@ import StudentResultsPage from './pages/StudentResultsPage'
 import StudentResultReviewPage from './pages/StudentResultReviewPage'
 import MaintenancePage from './pages/MaintenancePage'
 import AdminSettingsPage from './pages/AdminSettingsPage'
+import AdminAiTestGeneratorPage from './pages/AdminAiTestGeneratorPage'
 
 type AppSettings = {
   id: string
@@ -320,12 +321,6 @@ function App() {
     )
   }
 
-  /*
-    Maintenance Mode Rule:
-    - Admin can access full application.
-    - /login must always remain open so Admin can login.
-    - Non-admin users and public users see maintenance page.
-  */
   if (maintenanceMode && profile?.role !== 'ADMIN') {
     return (
       <BrowserRouter>
@@ -546,6 +541,19 @@ function App() {
                 isLoading={false}
               >
                 <AdminSettingsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/ai-test-generator"
+            element={
+              <ProtectedRoute
+                profile={profile}
+                allowedRoles={['ADMIN']}
+                isLoading={false}
+              >
+                <AdminAiTestGeneratorPage profile={profile as UserProfile} />
               </ProtectedRoute>
             }
           />
