@@ -33,6 +33,8 @@ import StudentResultReviewPage from './pages/StudentResultReviewPage'
 import MaintenancePage from './pages/MaintenancePage'
 import AdminSettingsPage from './pages/AdminSettingsPage'
 import AdminAiTestGeneratorPage from './pages/AdminAiTestGeneratorPage'
+import AdminAiTestsPage from './pages/AdminAiTestsPage'
+import AdminAiTestReviewPage from './pages/AdminAiTestReviewPage'
 
 type AppSettings = {
   id: string
@@ -554,6 +556,32 @@ function App() {
                 isLoading={false}
               >
                 <AdminAiTestGeneratorPage profile={profile as UserProfile} />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/ai-tests"
+            element={
+              <ProtectedRoute
+                profile={profile}
+                allowedRoles={['ADMIN']}
+                isLoading={false}
+              >
+                <AdminAiTestsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/ai-tests/:testId/review"
+            element={
+              <ProtectedRoute
+                profile={profile}
+                allowedRoles={['ADMIN']}
+                isLoading={false}
+              >
+                <AdminAiTestReviewPage profile={profile as UserProfile} />
               </ProtectedRoute>
             }
           />

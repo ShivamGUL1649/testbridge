@@ -4,12 +4,12 @@ import {
   Brain,
   CheckCircle2,
   Clock,
+  Database,
   FileText,
   Loader2,
   Sparkles,
 } from 'lucide-react'
 
-import { supabase } from '../lib/supabaseClient'
 import type { UserProfile } from '../types'
 
 type AdminAiTestGeneratorPageProps = {
@@ -20,50 +20,31 @@ type Difficulty = 'Beginner' | 'Intermediate' | 'Advanced'
 
 type GenerateAiTestResponse = {
   message: string
-  exam?: {
-    id: string
-    title: string
-    status: string
-  }
+  testId?: string
   totalQuestions?: number
-  redirectPath?: string
+  status?: string
 }
 
-type SupabaseFunctionError = {
-  message?: string
-  context?: Response
-}
+const gcpBackendBaseUrl = 'https://testbridge-backend-ukm3galdsq-el.a.run.app'
+const adminApiKey = 'testbridge-admin-2026'
 
-async function getFunctionErrorMessage(error: unknown): Promise<string> {
-  const functionError = error as SupabaseFunctionError
+async function getApiErrorMessage(response: Response): Promise<string> {
+  try {
+    const responseText = await response.text()
 
-  if (functionError?.context instanceof Response) {
-    try {
-      const responseText = await functionError.context.text()
-
-      if (responseText) {
-        try {
-          const parsed = JSON.parse(responseText) as { message?: string }
-
-          return parsed.message || responseText
-        } catch {
-          return responseText
-        }
-      }
-    } catch {
-      return functionError.message || 'Edge Function returned an error.'
+    if (!responseText) {
+      return `Request failed with status ${response.status}.`
     }
-  }
 
-  if (functionError?.message) {
-    return functionError.message
+    try {
+      const parsed = JSON.parse(responseText) as { message?: string }
+      return parsed.message || responseText
+    } catch {
+      return responseText
+    }
+  } catch {
+    return `Request failed with status ${response.status}.`
   }
-
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return 'Unable to generate AI test.'
 }
 
 function AdminAiTestGeneratorPage({
@@ -84,12 +65,14 @@ function AdminAiTestGeneratorPage({
   const [isGenerating, setIsGenerating] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
+  const [generatedTestId, setGeneratedTestId] = useState('')
 
   async function handleGenerateTest(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
     setErrorMessage('')
     setSuccessMessage('')
+    setGeneratedTestId('')
 
     if (!title.trim()) {
       setErrorMessage('Test title is required.')
@@ -106,13 +89,13 @@ function AdminAiTestGeneratorPage({
       return
     }
 
-    if (numberOfQuestions < 1 || numberOfQuestions > 70) {
-      setErrorMessage('Number of questions must be between 1 and 70.')
+    if (numberOfQuestions < 1 || numberOfQuestions > 100) {
+      setErrorMessage('Number of questions must be between 1 and 100.')
       return
     }
 
-    if (durationMinutes < 1 || durationMinutes > 180) {
-      setErrorMessage('Duration must be between 1 and 180 minutes.')
+    if (durationMinutes < 1 || durationMinutes > 240) {
+      setErrorMessage('Duration must be between 1 and 240 minutes.')
       return
     }
 
@@ -124,19 +107,15 @@ function AdminAiTestGeneratorPage({
     setIsGenerating(true)
 
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-
-      if (!session) {
-        setErrorMessage('Your login session is missing. Please login again.')
-        return
-      }
-
-      const { data, error } = await supabase.functions.invoke(
-        'generate-ai-test',
+      const response = await fetch(
+        `${gcpBackendBaseUrl}/api/ai-tests/generate`,
         {
-          body: {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-admin-key': adminApiKey,
+          },
+          body: JSON.stringify({
             title: title.trim(),
             topic: topic.trim(),
             difficulty,
@@ -144,36 +123,36 @@ function AdminAiTestGeneratorPage({
             durationMinutes,
             passingPercentage,
             prompt: prompt.trim(),
-          },
+          }),
         },
       )
 
-      if (error) {
-        const detailedMessage = await getFunctionErrorMessage(error)
+      if (!response.ok) {
+        const detailedMessage = await getApiErrorMessage(response)
         setErrorMessage(detailedMessage)
         return
       }
 
-      const response = data as GenerateAiTestResponse
+      const data = (await response.json()) as GenerateAiTestResponse
 
-      if (!response?.exam?.id) {
-        setErrorMessage(response?.message || 'AI test generation failed.')
+      if (!data?.testId) {
+        setErrorMessage(data?.message || 'AI test generation failed.')
         return
       }
 
-      setSuccessMessage(
-        `${response.message} Created ${
-          response.totalQuestions || numberOfQuestions
-        } questions.`,
-      )
+      setGeneratedTestId(data.testId)
 
-      window.setTimeout(() => {
-        navigate(
-          response.redirectPath || `/admin/exam/${response.exam?.id}/questions`,
-        )
-      }, 1000)
+      setSuccessMessage(
+        `${data.message} Created ${
+          data.totalQuestions || numberOfQuestions
+        } questions in Firestore. Status: ${data.status || 'DRAFT'}.`,
+      )
     } catch (error) {
-      const detailedMessage = await getFunctionErrorMessage(error)
+      const detailedMessage =
+        error instanceof Error
+          ? error.message
+          : 'Unable to connect with GCP Cloud Run backend.'
+
       setErrorMessage(detailedMessage)
     } finally {
       setIsGenerating(false)
@@ -187,8 +166,8 @@ function AdminAiTestGeneratorPage({
           <p className="eyebrow">Admin AI Control</p>
           <h1>AI Test Generator</h1>
           <p>
-            Generate a complete test using AI. The test will be saved as Draft,
-            so Admin can review questions before publishing.
+            Generate a complete test using GCP Cloud Run and OpenAI. The test
+            will be saved in Google Firestore as Draft for Admin review.
           </p>
         </div>
 
@@ -199,7 +178,7 @@ function AdminAiTestGeneratorPage({
             onClick={() => navigate('/admin/exams/pending')}
           >
             <FileText size={18} />
-            Manage Tests
+            Manage Published Tests
           </button>
         </div>
       </section>
@@ -209,7 +188,15 @@ function AdminAiTestGeneratorPage({
       ) : null}
 
       {successMessage ? (
-        <div className="alert-message alert-success">{successMessage}</div>
+        <div className="alert-message alert-success">
+          <div>{successMessage}</div>
+
+          {generatedTestId ? (
+            <div className="create-exam-note">
+              <strong>Firestore Test ID:</strong> {generatedTestId}
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       <section className="content-grid two-column-grid">
@@ -265,7 +252,7 @@ function AdminAiTestGeneratorPage({
                 <input
                   type="number"
                   min={1}
-                  max={70}
+                  max={100}
                   value={numberOfQuestions}
                   onChange={(event) =>
                     setNumberOfQuestions(Number(event.target.value))
@@ -279,7 +266,7 @@ function AdminAiTestGeneratorPage({
                 <input
                   type="number"
                   min={1}
-                  max={180}
+                  max={240}
                   value={durationMinutes}
                   onChange={(event) =>
                     setDurationMinutes(Number(event.target.value))
@@ -324,7 +311,9 @@ function AdminAiTestGeneratorPage({
               ) : (
                 <Sparkles size={18} />
               )}
-              {isGenerating ? 'Generating Test...' : 'Generate Test with AI'}
+              {isGenerating
+                ? 'Generating Test in Firestore...'
+                : 'Generate Test with AI'}
             </button>
           </form>
         </article>
@@ -334,8 +323,8 @@ function AdminAiTestGeneratorPage({
             <div>
               <h2>How AI Test Generator Works</h2>
               <p>
-                AI will perform the same basic work as a Test Creator, but Admin
-                remains in control.
+                AI will create draft tests in Firestore. Admin remains in
+                control before publishing to Test Takers.
               </p>
             </div>
           </div>
@@ -346,16 +335,26 @@ function AdminAiTestGeneratorPage({
                 <Brain size={17} /> AI Generation
               </strong>
               <span>
-                AI creates questions, options, correct answers and explanations.
+                Admin request goes from TestBridge UI to GCP Cloud Run.
               </span>
             </div>
 
             <div className="flow-item">
               <strong>
-                <FileText size={17} /> Draft Test
+                <Sparkles size={17} /> OpenAI Processing
               </strong>
               <span>
-                Generated test is saved as Draft first for safe review.
+                OpenAI creates questions, options, correct answers and
+                explanations.
+              </span>
+            </div>
+
+            <div className="flow-item">
+              <strong>
+                <Database size={17} /> Firestore Draft
+              </strong>
+              <span>
+                Generated test is saved in Firestore collection ai_tests.
               </span>
             </div>
 
@@ -364,7 +363,7 @@ function AdminAiTestGeneratorPage({
                 <CheckCircle2 size={17} /> Admin Review
               </strong>
               <span>
-                Admin can edit questions before publishing the test.
+                Admin should review generated questions before publishing.
               </span>
             </div>
 
@@ -380,12 +379,13 @@ function AdminAiTestGeneratorPage({
 
           <div className="alert-message alert-success create-exam-note">
             <Sparkles size={18} />
-            Recommended MVP limit: maximum 70 questions per generation.
+            Current MVP limit: maximum 100 questions per generation.
           </div>
 
           <div className="alert-message alert-error create-exam-note">
             <strong>Important:</strong>
-            AI questions should always be reviewed by Admin before publishing.
+            Generated tests are currently saved in Firestore only. They are not
+            yet copied to Supabase published tests.
           </div>
 
           <div className="placeholder-card">
