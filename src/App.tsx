@@ -1,11 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import {
-  BrowserRouter,
-  Link,
-  Navigate,
-  Route,
-  Routes,
-} from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import type { Session, User } from '@supabase/supabase-js'
 
 import './App.css'
@@ -14,8 +8,16 @@ import { supabase } from './lib/supabaseClient'
 import type { UserProfile } from './types'
 
 import Navbar from './components/Navbar'
+import Footer from './components/Footer'
 import Loading from './components/Loading'
 import ProtectedRoute from './components/ProtectedRoute'
+
+import HomePage from './pages/HomePage'
+import TestPacksPage from './pages/TestPacksPage'
+import AboutPage from './pages/AboutPage'
+import ContactPage from './pages/ContactPage'
+import TermsPage from './pages/TermsPage'
+import PrivacyPage from './pages/PrivacyPage'
 
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
@@ -45,62 +47,6 @@ type AppSettings = {
 
 const defaultMaintenanceMessage =
   'TestBridge is currently under maintenance. Please try again later.'
-
-function HomePage() {
-  return (
-    <main className="home-page">
-      <section className="hero-section">
-        <div className="hero-content">
-          <p className="eyebrow">TestBridge Online Testing Platform</p>
-          <h1>Secure online tests for Test Takers, Test Creators, and Admins.</h1>
-
-          <p className="hero-description">
-            Create tests, approve assessments, attempt tests with timers,
-            calculate results, and review explanations after submission.
-          </p>
-
-          <div className="hero-actions">
-            <Link to="/login" className="primary-button">
-              Login
-            </Link>
-
-            <Link to="/register" className="secondary-button">
-              Create Account
-            </Link>
-          </div>
-        </div>
-
-        <div className="hero-card">
-          <div className="hero-card-header">
-            <span>System Flow</span>
-          </div>
-
-          <div className="flow-list">
-            <div className="flow-item">
-              <strong>Test Creator</strong>
-              <span>Create test in Draft mode</span>
-            </div>
-
-            <div className="flow-item">
-              <strong>Admin</strong>
-              <span>Approve, edit, or delete tests</span>
-            </div>
-
-            <div className="flow-item">
-              <strong>Test Taker</strong>
-              <span>Attempt approved tests securely</span>
-            </div>
-
-            <div className="flow-item">
-              <strong>Result</strong>
-              <span>View score and explanations after submit</span>
-            </div>
-          </div>
-        </div>
-      </section>
-    </main>
-  )
-}
 
 function UnauthorizedPage() {
   return (
@@ -147,6 +93,7 @@ async function loadAppSettings(): Promise<AppSettings | null> {
 function getDashboardPath(profile: UserProfile | null): string {
   if (profile?.role === 'ADMIN') return '/admin'
   if (profile?.role === 'TUTOR') return '/tutor'
+
   return '/student'
 }
 
@@ -218,6 +165,7 @@ function App() {
 
     async function initialize() {
       if (!isMounted) return
+
       await loadAuthState()
     }
 
@@ -355,6 +303,11 @@ function App() {
 
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/test-packs" element={<TestPacksPage />} />
+          <Route path="/about" element={<AboutPage />} />
+          <Route path="/contact" element={<ContactPage />} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
 
           <Route
             path="/login"
@@ -589,6 +542,8 @@ function App() {
           <Route path="/unauthorized" element={<UnauthorizedPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+
+        <Footer />
       </div>
     </BrowserRouter>
   )
