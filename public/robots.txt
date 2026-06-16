@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://testsbridge.co.in/sitemap.xml
+Sitemap: https://www.testsbridge.co.in/sitemap.xml
