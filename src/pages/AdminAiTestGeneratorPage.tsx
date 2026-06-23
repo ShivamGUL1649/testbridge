@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Brain,
@@ -6,10 +6,12 @@ import {
   Clock,
   Database,
   FileText,
+  FolderKanban,
   Loader2,
   Sparkles,
 } from 'lucide-react'
 
+import { supabase } from '../lib/supabaseClient'
 import type { UserProfile } from '../types'
 
 type AdminAiTestGeneratorPageProps = {
@@ -17,6 +19,16 @@ type AdminAiTestGeneratorPageProps = {
 }
 
 type Difficulty = 'Beginner' | 'Intermediate' | 'Advanced'
+
+type ExamCategory = {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  is_active: boolean
+  display_order: number | null
+  is_featured: boolean | null
+}
 
 type GenerateAiTestResponse = {
   message: string
@@ -52,14 +64,18 @@ function AdminAiTestGeneratorPage({
 }: AdminAiTestGeneratorPageProps) {
   const navigate = useNavigate()
 
-  const [title, setTitle] = useState('GCP Practice Test')
-  const [topic, setTopic] = useState('Google Cloud Platform')
+  const [categories, setCategories] = useState<ExamCategory[]>([])
+  const [selectedCategoryId, setSelectedCategoryId] = useState('')
+  const [isLoadingCategories, setIsLoadingCategories] = useState(true)
+
+  const [title, setTitle] = useState('Google Cloud Generative AI Leader Practice Test')
+  const [topic, setTopic] = useState('Google Cloud Generative AI Leader')
   const [difficulty, setDifficulty] = useState<Difficulty>('Intermediate')
-  const [numberOfQuestions, setNumberOfQuestions] = useState(10)
-  const [durationMinutes, setDurationMinutes] = useState(15)
-  const [passingPercentage, setPassingPercentage] = useState(70)
+  const [numberOfQuestions, setNumberOfQuestions] = useState(50)
+  const [durationMinutes, setDurationMinutes] = useState(90)
+  const [passingPercentage, setPassingPercentage] = useState(75)
   const [prompt, setPrompt] = useState(
-    'Create certification-style multiple choice questions. Focus on practical concepts, real-world scenarios, and clear explanations.',
+    'Create an original certification-style single-choice practice test. Use realistic scenarios, exactly one correct answer per question, four options per question, and clear explanations. Do not create multiple-response questions. Do not copy or reproduce official exam questions.',
   )
 
   const [isGenerating, setIsGenerating] = useState(false)
@@ -67,12 +83,67 @@ function AdminAiTestGeneratorPage({
   const [successMessage, setSuccessMessage] = useState('')
   const [generatedTestId, setGeneratedTestId] = useState('')
 
+  const selectedCategory = useMemo(() => {
+    return categories.find((category) => category.id === selectedCategoryId) || null
+  }, [categories, selectedCategoryId])
+
+  async function loadCategories() {
+    setIsLoadingCategories(true)
+    setErrorMessage('')
+
+    const { data, error } = await supabase
+      .from('exam_categories')
+      .select('id, name, slug, description, is_active, display_order, is_featured')
+      .eq('is_active', true)
+      .order('is_featured', { ascending: false })
+      .order('display_order', { ascending: true })
+      .order('name', { ascending: true })
+
+    if (error) {
+      setErrorMessage(error.message)
+      setCategories([])
+      setIsLoadingCategories(false)
+      return
+    }
+
+    const loadedCategories = ((data || []) as unknown) as ExamCategory[]
+    setCategories(loadedCategories)
+
+    if (!selectedCategoryId && loadedCategories.length > 0) {
+      const firstCategory = loadedCategories[0]
+      setSelectedCategoryId(firstCategory.id)
+      setTopic(firstCategory.name)
+    }
+
+    setIsLoadingCategories(false)
+  }
+
+  useEffect(() => {
+    void loadCategories()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function handleCategoryChange(categoryId: string) {
+    setSelectedCategoryId(categoryId)
+
+    const category = categories.find((item) => item.id === categoryId)
+
+    if (category) {
+      setTopic(category.name)
+    }
+  }
+
   async function handleGenerateTest(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
     setErrorMessage('')
     setSuccessMessage('')
     setGeneratedTestId('')
+
+    if (!selectedCategory) {
+      setErrorMessage('Please select a category for this AI-generated test.')
+      return
+    }
 
     if (!title.trim()) {
       setErrorMessage('Test title is required.')
@@ -123,6 +194,16 @@ function AdminAiTestGeneratorPage({
             durationMinutes,
             passingPercentage,
             prompt: prompt.trim(),
+
+            categoryId: selectedCategory.id,
+            category_id: selectedCategory.id,
+            categorySlug: selectedCategory.slug,
+            category_slug: selectedCategory.slug,
+            categoryName: selectedCategory.name,
+            category_name: selectedCategory.name,
+
+            questionType: 'SINGLE_CHOICE',
+            answerMode: 'ONE_CORRECT_ANSWER',
           }),
         },
       )
@@ -145,7 +226,9 @@ function AdminAiTestGeneratorPage({
       setSuccessMessage(
         `${data.message} Created ${
           data.totalQuestions || numberOfQuestions
-        } questions in Firestore. Status: ${data.status || 'DRAFT'}.`,
+        } questions in Firestore. Category: ${
+          selectedCategory.name
+        }. Status: ${data.status || 'DRAFT'}.`,
       )
     } catch (error) {
       const detailedMessage =
@@ -166,8 +249,9 @@ function AdminAiTestGeneratorPage({
           <p className="eyebrow">Admin AI Control</p>
           <h1>AI Test Generator</h1>
           <p>
-            Generate a complete test using GCP Cloud Run and OpenAI. The test
-            will be saved in Google Firestore as Draft for Admin review.
+            Generate a complete category-aligned test using GCP Cloud Run and
+            OpenAI. The test will be saved in Google Firestore as Draft for
+            Admin review.
           </p>
         </div>
 
@@ -205,18 +289,50 @@ function AdminAiTestGeneratorPage({
             <div>
               <h2>Create Test with AI</h2>
               <p>
-                Enter topic, question count, difficulty and instructions for AI.
+                Select category first, then enter exam name, question count,
+                difficulty and prompt instructions.
               </p>
             </div>
           </div>
 
           <form className="form-card" onSubmit={handleGenerateTest}>
             <label className="form-field">
+              <span>Category *</span>
+              <select
+                value={selectedCategoryId}
+                onChange={(event) => handleCategoryChange(event.target.value)}
+                disabled={isGenerating || isLoadingCategories}
+              >
+                <option value="">
+                  {isLoadingCategories
+                    ? 'Loading categories...'
+                    : 'Select category'}
+                </option>
+
+                {categories.map((category) => (
+                  <option value={category.id} key={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {selectedCategory ? (
+              <div className="create-exam-note">
+                <FolderKanban size={18} />
+                <span>
+                  Selected category: <strong>{selectedCategory.name}</strong>{' '}
+                  /practice/{selectedCategory.slug}
+                </span>
+              </div>
+            ) : null}
+
+            <label className="form-field">
               <span>Test Title</span>
               <input
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
-                placeholder="Example: GCP Practice Test"
+                placeholder="Example: Google Cloud Generative AI Leader Practice Test"
                 disabled={isGenerating}
               />
             </label>
@@ -226,7 +342,7 @@ function AdminAiTestGeneratorPage({
               <input
                 value={topic}
                 onChange={(event) => setTopic(event.target.value)}
-                placeholder="Example: Google Cloud Platform"
+                placeholder="Example: Google Cloud Generative AI Leader"
                 disabled={isGenerating}
               />
             </label>
@@ -293,7 +409,7 @@ function AdminAiTestGeneratorPage({
             <label className="form-field">
               <span>AI Prompt / Instructions</span>
               <textarea
-                rows={6}
+                rows={8}
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
                 placeholder="Describe what type of questions AI should create"
@@ -304,7 +420,7 @@ function AdminAiTestGeneratorPage({
             <button
               type="submit"
               className="primary-button full-width-button"
-              disabled={isGenerating}
+              disabled={isGenerating || isLoadingCategories}
             >
               {isGenerating ? (
                 <Loader2 size={18} className="spin-icon" />
@@ -312,7 +428,7 @@ function AdminAiTestGeneratorPage({
                 <Sparkles size={18} />
               )}
               {isGenerating
-                ? 'Generating Test in Firestore...'
+                ? 'Generating Category-Aligned Test...'
                 : 'Generate Test with AI'}
             </button>
           </form>
@@ -330,6 +446,16 @@ function AdminAiTestGeneratorPage({
           </div>
 
           <div className="flow-list">
+            <div className="flow-item">
+              <strong>
+                <FolderKanban size={17} /> Category Alignment
+              </strong>
+              <span>
+                Admin selects a category before generating. Category ID, slug and
+                name are sent to backend.
+              </span>
+            </div>
+
             <div className="flow-item">
               <strong>
                 <Brain size={17} /> AI Generation
@@ -384,8 +510,9 @@ function AdminAiTestGeneratorPage({
 
           <div className="alert-message alert-error create-exam-note">
             <strong>Important:</strong>
-            Generated tests are currently saved in Firestore only. They are not
-            yet copied to Supabase published tests.
+            This UI now sends category details to backend. Backend and publish
+            review must also store category details for full end-to-end category
+            alignment.
           </div>
 
           <div className="placeholder-card">

@@ -190,14 +190,27 @@ function StudentAvailableExamsPage({ profile }: StudentAvailableExamsPageProps) 
         ((interestsResponse.data ?? []) as unknown) as UserCategoryInterest[]
 
       const selectedCategoryIds = new Set(
-        activeInterests.map((interest) => interest.category_id),
+        activeInterests
+          .map((interest) => interest.category_id)
+          .filter(Boolean),
       )
 
-      const allowedCategories = activeCategories.filter((category) =>
-        selectedCategoryIds.has(category.id),
+      const selectedCategorySlugsFromInterests = new Set(
+        activeInterests
+          .map((interest) => interest.category_slug)
+          .filter(Boolean) as string[],
       )
 
-      const allowedSlugs = allowedCategories.map((category) => category.slug)
+      const allowedCategories = activeCategories.filter(
+        (category) =>
+          selectedCategoryIds.has(category.id) ||
+          selectedCategorySlugsFromInterests.has(category.slug),
+      )
+
+      const allowedIds = new Set(allowedCategories.map((category) => category.id))
+      const allowedSlugs = new Set(
+        allowedCategories.map((category) => category.slug),
+      )
 
       setAllActiveCategories(activeCategories)
       setSelectedCategories(allowedCategories)
@@ -205,12 +218,23 @@ function StudentAvailableExamsPage({ profile }: StudentAvailableExamsPageProps) 
         buildAttemptMap((attemptsResponse.data ?? []) as ExamAttemptSummary[]),
       )
 
-      if (allowedSlugs.length === 0) {
+      if (allowedCategories.length === 0) {
         setTests([])
         setSelectedCategorySlug('ALL')
         return
       }
 
+      /*
+        Important:
+        Do not filter only by category_slug in Supabase query.
+
+        Some AI-published tests may have category_id populated but category_slug
+        missing or delayed due to older drafts / older publish flow. We fetch
+        approved exams visible to the logged-in user, then safely filter on both
+        category_id and category_slug in the frontend.
+
+        RLS still protects student visibility on the database side.
+      */
       const testsResponse = await supabase
         .from('exams')
         .select(
@@ -230,14 +254,22 @@ function StudentAvailableExamsPage({ profile }: StudentAvailableExamsPageProps) 
           ].join(', '),
         )
         .eq('status', 'APPROVED')
-        .in('category_slug', allowedSlugs)
         .order('created_at', { ascending: false })
 
       if (testsResponse.error) {
         throw new Error(testsResponse.error.message)
       }
 
-      setTests(((testsResponse.data ?? []) as unknown) as ApprovedExam[])
+      const approvedTests =
+        ((testsResponse.data ?? []) as unknown) as ApprovedExam[]
+
+      const selectedCategoryTests = approvedTests.filter(
+        (test) =>
+          (test.category_id && allowedIds.has(test.category_id)) ||
+          (test.category_slug && allowedSlugs.has(test.category_slug)),
+      )
+
+      setTests(selectedCategoryTests)
     } catch (error) {
       const message =
         error instanceof Error

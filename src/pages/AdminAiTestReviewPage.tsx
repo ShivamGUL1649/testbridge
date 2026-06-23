@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   AlertCircle,
@@ -7,6 +7,7 @@ import {
   Clock,
   Database,
   FileText,
+  FolderKanban,
   Loader2,
   RefreshCw,
   Send,
@@ -34,6 +35,18 @@ type AiTest = {
   createdAt: string
   updatedAt: string
   completedAt: string
+
+  categoryId?: string
+  category_id?: string
+  categorySlug?: string
+  category_slug?: string
+  categoryName?: string
+  category_name?: string
+
+  questionType?: string
+  question_type?: string
+  answerMode?: string
+  answer_mode?: string
 }
 
 type AiQuestion = {
@@ -55,6 +68,12 @@ type AiTestQuestionsResponse = {
   questions: AiQuestion[]
 }
 
+type CategoryInfo = {
+  id: string
+  slug: string
+  name: string
+}
+
 const gcpBackendBaseUrl = 'https://testbridge-backend-ukm3galdsq-el.a.run.app'
 const adminApiKey = 'testbridge-admin-2026'
 
@@ -68,6 +87,10 @@ function formatDate(value: string): string {
   }
 
   return date.toLocaleString()
+}
+
+function cleanText(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
 }
 
 function getOptionLabel(option: string): string {
@@ -88,6 +111,38 @@ function getOptionText(question: AiQuestion, option: string): string {
 
 function isValidCorrectOption(value: string): value is 'A' | 'B' | 'C' | 'D' {
   return value === 'A' || value === 'B' || value === 'C' || value === 'D'
+}
+
+function getCategoryInfo(test: AiTest | null): CategoryInfo | null {
+  if (!test) {
+    return null
+  }
+
+  const id = cleanText(test.category_id || test.categoryId)
+  const slug = cleanText(test.category_slug || test.categorySlug)
+  const name = cleanText(test.category_name || test.categoryName)
+
+  if (!id || !slug) {
+    return null
+  }
+
+  return {
+    id,
+    slug,
+    name: name || slug,
+  }
+}
+
+function getQuestionType(test: AiTest | null): string {
+  if (!test) return 'SINGLE_CHOICE'
+
+  return cleanText(test.question_type || test.questionType) || 'SINGLE_CHOICE'
+}
+
+function getAnswerMode(test: AiTest | null): string {
+  if (!test) return 'ONE_CORRECT_ANSWER'
+
+  return cleanText(test.answer_mode || test.answerMode) || 'ONE_CORRECT_ANSWER'
 }
 
 async function getApiErrorMessage(response: Response): Promise<string> {
@@ -120,6 +175,10 @@ function AdminAiTestReviewPage({ profile }: AdminAiTestReviewPageProps) {
   const [errorMessage, setErrorMessage] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
   const [publishedSupabaseExamId, setPublishedSupabaseExamId] = useState('')
+
+  const categoryInfo = useMemo(() => getCategoryInfo(test), [test])
+  const questionType = useMemo(() => getQuestionType(test), [test])
+  const answerMode = useMemo(() => getAnswerMode(test), [test])
 
   async function loadTestQuestions() {
     if (!testId) {
@@ -182,6 +241,18 @@ function AdminAiTestReviewPage({ profile }: AdminAiTestReviewPageProps) {
       return 'Only DRAFT AI tests can be published.'
     }
 
+    if (!categoryInfo) {
+      return 'Category is missing in this AI draft. Please generate a new AI test after selecting a category.'
+    }
+
+    if (questionType !== 'SINGLE_CHOICE') {
+      return 'Only SINGLE_CHOICE AI drafts can be published in the current MVP.'
+    }
+
+    if (answerMode !== 'ONE_CORRECT_ANSWER') {
+      return 'Only ONE_CORRECT_ANSWER AI drafts can be published in the current MVP.'
+    }
+
     if (questions.length === 0) {
       return 'No questions found for this AI test.'
     }
@@ -220,10 +291,10 @@ function AdminAiTestReviewPage({ profile }: AdminAiTestReviewPageProps) {
       return
     }
 
-    if (!test) return
+    if (!test || !categoryInfo) return
 
     const confirmed = window.confirm(
-      `Publish this AI generated test to TestBridge?\n\n${test.title}\nQuestions: ${questions.length}\n\nThis will create an APPROVED test in Supabase and Test Takers can see it.`,
+      `Publish this AI generated test to TestBridge?\n\n${test.title}\nCategory: ${categoryInfo.name}\nQuestions: ${questions.length}\n\nThis will create an APPROVED category-aligned test in Supabase and Test Takers can see it.`,
     )
 
     if (!confirmed) return
@@ -238,10 +309,15 @@ function AdminAiTestReviewPage({ profile }: AdminAiTestReviewPageProps) {
         .insert({
           title: test.title.trim(),
           description:
-            `AI generated test from Firestore.\n\nTopic: ${test.topic}\nDifficulty: ${test.difficulty}\nFirestore Test ID: ${test.id}\n\nPrompt:\n${test.prompt || 'N/A'}`,
+            `AI generated test from Firestore.\n\nCategory: ${categoryInfo.name}\nCategory Slug: ${categoryInfo.slug}\nTopic: ${test.topic}\nDifficulty: ${test.difficulty}\nQuestion Type: ${questionType}\nAnswer Mode: ${answerMode}\nFirestore Test ID: ${test.id}\n\nPrompt:\n${test.prompt || 'N/A'}`,
+          category_id: categoryInfo.id,
+          category_slug: categoryInfo.slug,
+          total_questions: Number(test.numberOfQuestions),
           total_time_minutes: Number(test.durationMinutes),
           passing_marks: Number(test.passingPercentage),
           status: 'APPROVED',
+          is_demo: false,
+          is_free_demo: false,
           created_by: profile.id,
           updated_at: new Date().toISOString(),
         })
@@ -287,7 +363,7 @@ function AdminAiTestReviewPage({ profile }: AdminAiTestReviewPageProps) {
 
       setPublishedSupabaseExamId(supabaseExamId)
       setSuccessMessage(
-        `AI test published successfully to TestBridge. Supabase Test ID: ${supabaseExamId}`,
+        `AI test published successfully to TestBridge under ${categoryInfo.name}. Supabase Test ID: ${supabaseExamId}`,
       )
     } catch (error) {
       const detailedMessage =
@@ -314,8 +390,8 @@ function AdminAiTestReviewPage({ profile }: AdminAiTestReviewPageProps) {
           <h1>Review AI Generated Test</h1>
           <p>
             Review generated questions, options, correct answers and
-            explanations from Firestore. Then publish the test to TestBridge for
-            Test Takers.
+            explanations from Firestore. Then publish the category-aligned test
+            to TestBridge for Test Takers.
           </p>
         </div>
 
@@ -381,7 +457,7 @@ function AdminAiTestReviewPage({ profile }: AdminAiTestReviewPageProps) {
             {publishedSupabaseExamId ? (
               <p>
                 This test is now created in Supabase with APPROVED status and
-                should be visible in the Test Taker available tests list.
+                should be visible for Test Takers who selected this category.
               </p>
             ) : null}
           </div>
@@ -410,6 +486,28 @@ function AdminAiTestReviewPage({ profile }: AdminAiTestReviewPageProps) {
                 {test.status}
               </span>
             </div>
+
+            {!categoryInfo ? (
+              <div className="alert-message alert-error create-exam-note">
+                <AlertCircle size={18} />
+                <div>
+                  <strong>Category missing in this AI draft.</strong>
+                  <p>
+                    This draft was likely generated before category support was
+                    added. Please generate a new AI test after selecting a
+                    category.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="alert-message alert-success create-exam-note">
+                <FolderKanban size={18} />
+                <div>
+                  <strong>Category: {categoryInfo.name}</strong>
+                  <p>/practice/{categoryInfo.slug}</p>
+                </div>
+              </div>
+            )}
 
             <div className="stats-grid">
               <div className="stat-card">
@@ -450,6 +548,8 @@ function AdminAiTestReviewPage({ profile }: AdminAiTestReviewPageProps) {
 
             <div className="create-exam-note">
               <strong>Difficulty:</strong> {test.difficulty} |{' '}
+              <strong>Question Type:</strong> {questionType} |{' '}
+              <strong>Answer Mode:</strong> {answerMode} |{' '}
               <strong>Created:</strong> {formatDate(test.createdAt)}
             </div>
           </section>

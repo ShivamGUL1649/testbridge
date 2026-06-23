@@ -13,6 +13,21 @@ type GenerateAiTestRequest = {
   durationMinutes: number
   passingPercentage: number
   prompt: string
+
+  categoryId?: string
+  category_id?: string
+  categorySlug?: string
+  category_slug?: string
+  categoryName?: string
+  category_name?: string
+  questionType?: string
+  answerMode?: string
+}
+
+type NormalizedCategory = {
+  categoryId: string
+  categorySlug: string
+  categoryName: string
 }
 
 type GeneratedQuestion = {
@@ -43,10 +58,34 @@ function cleanString(value: unknown): string {
   return value.trim()
 }
 
+function normalizeCategory(body: GenerateAiTestRequest): NormalizedCategory {
+  return {
+    categoryId: cleanString(body.categoryId || body.category_id),
+    categorySlug: cleanString(body.categorySlug || body.category_slug),
+    categoryName:
+      cleanString(body.categoryName || body.category_name) ||
+      cleanString(body.topic),
+  }
+}
+
 function validateRequest(body: GenerateAiTestRequest): string | null {
   if (!cleanString(body.title)) return 'Test title is required.'
   if (!cleanString(body.topic)) return 'Topic is required.'
   if (!cleanString(body.prompt)) return 'Prompt is required.'
+
+  const category = normalizeCategory(body)
+
+  if (!category.categoryId) {
+    return 'Category is required. Please select a category before generating the AI test.'
+  }
+
+  if (!category.categorySlug) {
+    return 'Category slug is required. Please select a valid category before generating the AI test.'
+  }
+
+  if (!category.categoryName) {
+    return 'Category name is required. Please select a valid category before generating the AI test.'
+  }
 
   if (!['Beginner', 'Intermediate', 'Advanced'].includes(body.difficulty)) {
     return 'Difficulty must be Beginner, Intermediate, or Advanced.'
@@ -76,8 +115,8 @@ function validateRequest(body: GenerateAiTestRequest): string | null {
     return 'Passing percentage must be between 1 and 100.'
   }
 
-  if (body.prompt.length > 2500) {
-    return 'Prompt should not be more than 2500 characters.'
+  if (body.prompt.length > 6000) {
+    return 'Prompt should not be more than 6000 characters.'
   }
 
   return null
@@ -123,13 +162,17 @@ Create exactly ${batchQuestionCount} high-quality multiple-choice questions.
 Test Details:
 - Test title: ${body.title}
 - Topic: ${body.topic}
+- Category: ${normalizeCategory(body).categoryName}
+- Category slug: ${normalizeCategory(body).categorySlug}
 - Difficulty: ${body.difficulty}
+- Question type: Single Choice only
+- Correct answers: Exactly one correct option per question
 - Batch number: ${batchNumber}
 - Start question number: ${startQuestionNumber}
 - Question count in this batch: ${batchQuestionCount}
 
 Quality Rules:
-- Create scenario-based and practical questions.
+- Create scenario-based and practical questions aligned with the selected category.
 - Avoid basic definition-only questions unless difficulty is Beginner.
 - Wrong options must be realistic and close to the correct answer.
 - Avoid obviously wrong options.
@@ -423,6 +466,8 @@ app.post('/api/ai-tests/generate', async (req, res) => {
       })
     }
 
+    const category = normalizeCategory(body)
+
     testRef = firestore.collection('ai_tests').doc()
     const testId = testRef.id
 
@@ -435,6 +480,19 @@ app.post('/api/ai-tests/generate', async (req, res) => {
       durationMinutes: body.durationMinutes,
       passingPercentage: body.passingPercentage,
       prompt: body.prompt.trim(),
+
+      categoryId: category.categoryId,
+      category_id: category.categoryId,
+      categorySlug: category.categorySlug,
+      category_slug: category.categorySlug,
+      categoryName: category.categoryName,
+      category_name: category.categoryName,
+
+      questionType: 'SINGLE_CHOICE',
+      question_type: 'SINGLE_CHOICE',
+      answerMode: 'ONE_CORRECT_ANSWER',
+      answer_mode: 'ONE_CORRECT_ANSWER',
+
       status: 'GENERATING',
       generatedQuestions: 0,
       failedReason: '',
@@ -486,6 +544,11 @@ app.post('/api/ai-tests/generate', async (req, res) => {
       testId,
       totalQuestions: generatedQuestions,
       status: 'DRAFT',
+      category: {
+        id: category.categoryId,
+        slug: category.categorySlug,
+        name: category.categoryName,
+      },
     })
   } catch (error) {
     const message =
@@ -528,6 +591,14 @@ app.get('/api/ai-tests', async (req, res) => {
         numberOfQuestions: data.numberOfQuestions || 0,
         durationMinutes: data.durationMinutes || 0,
         passingPercentage: data.passingPercentage || 0,
+        categoryId: data.categoryId || data.category_id || '',
+        category_id: data.category_id || data.categoryId || '',
+        categorySlug: data.categorySlug || data.category_slug || '',
+        category_slug: data.category_slug || data.categorySlug || '',
+        categoryName: data.categoryName || data.category_name || '',
+        category_name: data.category_name || data.categoryName || '',
+        questionType: data.questionType || data.question_type || 'SINGLE_CHOICE',
+        answerMode: data.answerMode || data.answer_mode || 'ONE_CORRECT_ANSWER',
         status: data.status || '',
         generatedQuestions: data.generatedQuestions || 0,
         failedReason: data.failedReason || '',
