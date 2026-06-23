@@ -309,7 +309,7 @@ function AdminAiTestReviewPage({ profile }: AdminAiTestReviewPageProps) {
         .insert({
           title: test.title.trim(),
           description:
-            `AI generated test from Firestore.\n\nCategory: ${categoryInfo.name}\nCategory Slug: ${categoryInfo.slug}\nTopic: ${test.topic}\nDifficulty: ${test.difficulty}\nQuestion Type: ${questionType}\nAnswer Mode: ${answerMode}\nFirestore Test ID: ${test.id}\n\nPrompt:\n${test.prompt || 'N/A'}`,
+            `Practice ${test.title.trim()} with timed single-choice questions, scoring, answer review, and explanations under ${categoryInfo.name}.`,
           category_id: categoryInfo.id,
           category_slug: categoryInfo.slug,
           total_questions: Number(test.numberOfQuestions),

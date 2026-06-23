@@ -19,6 +19,7 @@ type ExamCategory = {
   seo_title: string | null
   seo_description: string | null
   is_active: boolean
+  deleted_at: string | null
   demo_enabled: boolean
   demo_exam_id: string | null
   demo_question_limit: number
@@ -36,6 +37,7 @@ type ExamOption = {
   category_id: string | null
   category_slug: string | null
   is_demo: boolean
+  is_free_demo: boolean | null
   demo_slug: string | null
   total_time_minutes: number | null
 }
@@ -80,13 +82,42 @@ function AdminDemoSettingsPage() {
     return exams.find((exam) => exam.id === form.demoExamId) || null
   }, [exams, form.demoExamId])
 
-  const approvedExams = useMemo(() => {
-    return exams.filter((exam) => exam.status === 'APPROVED')
-  }, [exams])
+  const approvedExamsForSelectedCategory = useMemo(() => {
+    if (!selectedCategory) {
+      return []
+    }
+
+    return exams.filter(
+      (exam) =>
+        exam.status === 'APPROVED' &&
+        (exam.category_id === selectedCategory.id ||
+          exam.category_slug === selectedCategory.slug),
+    )
+  }, [exams, selectedCategory])
 
   const publicDemoUrl = selectedCategory
     ? `/demo/${createDemoSlug(selectedCategory.slug)}`
     : '/demo'
+
+  function buildFormFromCategory(category: ExamCategory): DemoFormState {
+    return {
+      categoryId: category.id,
+      demoEnabled: Boolean(category.demo_enabled),
+      demoExamId: category.demo_exam_id || '',
+      demoQuestionLimit: category.demo_question_limit || 10,
+      demoDurationMinutes: category.demo_duration_minutes || 15,
+      showDemoExplanations:
+        category.show_demo_explanations === null ||
+        category.show_demo_explanations === undefined
+          ? true
+          : Boolean(category.show_demo_explanations),
+      showRegisterCta:
+        category.show_register_cta === null ||
+        category.show_register_cta === undefined
+          ? true
+          : Boolean(category.show_register_cta),
+    }
+  }
 
   async function loadData() {
     setIsLoading(true)
@@ -98,15 +129,45 @@ function AdminDemoSettingsPage() {
         supabase
           .from('exam_categories')
           .select(
-            'id, name, slug, description, seo_title, seo_description, is_active, demo_enabled, demo_exam_id, demo_question_limit, demo_duration_minutes, show_demo_explanations, show_register_cta, created_at, updated_at',
+            [
+              'id',
+              'name',
+              'slug',
+              'description',
+              'seo_title',
+              'seo_description',
+              'is_active',
+              'deleted_at',
+              'demo_enabled',
+              'demo_exam_id',
+              'demo_question_limit',
+              'demo_duration_minutes',
+              'show_demo_explanations',
+              'show_register_cta',
+              'created_at',
+              'updated_at',
+            ].join(', '),
           )
+          .eq('is_active', true)
+          .is('deleted_at', null)
           .order('name', { ascending: true }),
 
         supabase
           .from('exams')
           .select(
-            'id, title, status, category_id, category_slug, is_demo, demo_slug, total_time_minutes',
+            [
+              'id',
+              'title',
+              'status',
+              'category_id',
+              'category_slug',
+              'is_demo',
+              'is_free_demo',
+              'demo_slug',
+              'total_time_minutes',
+            ].join(', '),
           )
+          .eq('status', 'APPROVED')
           .order('title', { ascending: true }),
       ])
 
@@ -119,24 +180,33 @@ function AdminDemoSettingsPage() {
       }
 
       const loadedCategories =
-        (categoriesResponse.data as unknown as ExamCategory[]) || []
+        ((categoriesResponse.data || []) as unknown) as ExamCategory[]
 
-      const loadedExams = (examsResponse.data as unknown as ExamOption[]) || []
+      const loadedExams =
+        ((examsResponse.data || []) as unknown) as ExamOption[]
 
       setCategories(loadedCategories)
       setExams(loadedExams)
 
       if (loadedCategories.length > 0) {
-        const firstCategory = loadedCategories[0]
+        const currentCategoryStillExists = loadedCategories.find(
+          (category) => category.id === form.categoryId,
+        )
 
+        setForm(
+          buildFormFromCategory(
+            currentCategoryStillExists || loadedCategories[0],
+          ),
+        )
+      } else {
         setForm({
-          categoryId: firstCategory.id,
-          demoEnabled: firstCategory.demo_enabled,
-          demoExamId: firstCategory.demo_exam_id || '',
-          demoQuestionLimit: firstCategory.demo_question_limit || 10,
-          demoDurationMinutes: firstCategory.demo_duration_minutes || 15,
-          showDemoExplanations: firstCategory.show_demo_explanations,
-          showRegisterCta: firstCategory.show_register_cta,
+          categoryId: '',
+          demoEnabled: false,
+          demoExamId: '',
+          demoQuestionLimit: 10,
+          demoDurationMinutes: 15,
+          showDemoExplanations: true,
+          showRegisterCta: true,
         })
       }
     } catch (error) {
@@ -153,6 +223,7 @@ function AdminDemoSettingsPage() {
 
   useEffect(() => {
     void loadData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function handleCategoryChange(categoryId: string) {
@@ -164,26 +235,37 @@ function AdminDemoSettingsPage() {
 
     setSuccessMessage('')
     setErrorMessage('')
-
-    setForm({
-      categoryId: category.id,
-      demoEnabled: category.demo_enabled,
-      demoExamId: category.demo_exam_id || '',
-      demoQuestionLimit: category.demo_question_limit || 10,
-      demoDurationMinutes: category.demo_duration_minutes || 15,
-      showDemoExplanations: category.show_demo_explanations,
-      showRegisterCta: category.show_register_cta,
-    })
+    setForm(buildFormFromCategory(category))
   }
 
   async function handleSave() {
     if (!selectedCategory) {
-      setErrorMessage('Please select a topic first.')
+      setErrorMessage('Please select an active category first.')
+      return
+    }
+
+    if (!selectedCategory.is_active || selectedCategory.deleted_at) {
+      setErrorMessage('This category is inactive or deleted. Please choose another category.')
       return
     }
 
     if (form.demoEnabled && !form.demoExamId) {
       setErrorMessage('Please select a demo test before enabling demo.')
+      return
+    }
+
+    if (form.demoEnabled && !selectedExam) {
+      setErrorMessage('Selected demo test is not available. Please select another approved test.')
+      return
+    }
+
+    if (
+      form.demoEnabled &&
+      selectedExam &&
+      selectedExam.category_id !== selectedCategory.id &&
+      selectedExam.category_slug !== selectedCategory.slug
+    ) {
+      setErrorMessage('Selected demo test does not belong to the selected category.')
       return
     }
 
@@ -228,6 +310,7 @@ function AdminDemoSettingsPage() {
             category_id: selectedCategory.id,
             category_slug: selectedCategory.slug,
             is_demo: true,
+            is_free_demo: true,
             demo_slug: demoSlug,
             total_time_minutes: form.demoDurationMinutes,
             updated_at: new Date().toISOString(),
@@ -261,7 +344,7 @@ function AdminDemoSettingsPage() {
 
           <h1>Loading demo settings...</h1>
 
-          <p>Please wait while TestBridge loads available topics and tests.</p>
+          <p>Please wait while TestBridge loads active categories and approved tests.</p>
         </section>
       </main>
     )
@@ -276,9 +359,9 @@ function AdminDemoSettingsPage() {
           <h1>Configure public demo tests without login</h1>
 
           <p>
-            Select which topic should show a public demo, choose the demo test,
-            control question count, duration, explanations, and registration
-            call-to-action.
+            Select which active category should show a public demo, choose the
+            approved demo test, control question count, duration, explanations,
+            and registration call-to-action.
           </p>
         </div>
 
@@ -308,224 +391,245 @@ function AdminDemoSettingsPage() {
         </section>
       ) : null}
 
-      <section className="content-grid two-column-grid">
-        <article className="content-card">
-          <div className="section-title-row">
-            <div>
-              <p className="eyebrow">Demo Configuration</p>
+      {categories.length === 0 ? (
+        <section className="placeholder-card">
+          <AlertCircle size={32} />
+          <h2>No active categories found</h2>
+          <p>
+            Create or restore an active category first. Deleted and inactive
+            categories are intentionally hidden from Demo Settings.
+          </p>
+        </section>
+      ) : (
+        <section className="content-grid two-column-grid">
+          <article className="content-card">
+            <div className="section-title-row">
+              <div>
+                <p className="eyebrow">Demo Configuration</p>
 
-              <h2>Choose topic and demo test</h2>
+                <h2>Choose category and demo test</h2>
 
-              <p>
-                Public users will see enabled demo topics on the Demo page. A
-                demo test should normally have 10 high-quality questions.
-              </p>
-            </div>
-          </div>
-
-          <div className="create-exam-form">
-            <label className="form-field">
-              <span>Topic</span>
-
-              <select
-                value={form.categoryId}
-                onChange={(event) => handleCategoryChange(event.target.value)}
-              >
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="form-field">
-              <span>Demo Test</span>
-
-              <select
-                value={form.demoExamId}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    demoExamId: event.target.value,
-                  }))
-                }
-              >
-                <option value="">Select approved test for demo</option>
-
-                {approvedExams.map((exam) => (
-                  <option key={exam.id} value={exam.id}>
-                    {exam.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="form-field checkbox-field">
-              <input
-                type="checkbox"
-                checked={form.demoEnabled}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    demoEnabled: event.target.checked,
-                  }))
-                }
-              />
-
-              <span>Enable public demo for this topic</span>
-            </label>
-
-            <label className="form-field">
-              <span>Demo Question Limit</span>
-
-              <input
-                type="number"
-                min={1}
-                max={50}
-                value={form.demoQuestionLimit}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    demoQuestionLimit: Number(event.target.value),
-                  }))
-                }
-              />
-            </label>
-
-            <label className="form-field">
-              <span>Demo Duration Minutes</span>
-
-              <input
-                type="number"
-                min={1}
-                max={180}
-                value={form.demoDurationMinutes}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    demoDurationMinutes: Number(event.target.value),
-                  }))
-                }
-              />
-            </label>
-
-            <label className="form-field checkbox-field">
-              <input
-                type="checkbox"
-                checked={form.showDemoExplanations}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    showDemoExplanations: event.target.checked,
-                  }))
-                }
-              />
-
-              <span>Show explanations after demo result</span>
-            </label>
-
-            <label className="form-field checkbox-field">
-              <input
-                type="checkbox"
-                checked={form.showRegisterCta}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    showRegisterCta: event.target.checked,
-                  }))
-                }
-              />
-
-              <span>Show register button after demo result</span>
-            </label>
-
-            <div className="hero-actions">
-              <button
-                type="button"
-                className="primary-button"
-                disabled={isSaving}
-                onClick={() => void handleSave()}
-              >
-                <Save size={18} />
-                {isSaving ? 'Saving...' : 'Save Demo Settings'}
-              </button>
-            </div>
-          </div>
-        </article>
-
-        <article className="content-card">
-          <div className="section-title-row">
-            <div>
-              <p className="eyebrow">Public Demo Preview</p>
-
-              <h2>What visitors will experience</h2>
-
-              <p>
-                This preview explains how the selected demo topic will appear to
-                visitors without login.
-              </p>
-            </div>
-          </div>
-
-          <div className="dashboard-grid">
-            <div className="dashboard-card">
-              <Sparkles size={34} />
-
-              <h2>{selectedCategory?.name || 'Select Topic'}</h2>
-
-              <p>
-                {selectedCategory?.description ||
-                  'Choose a topic to configure public demo access.'}
-              </p>
+                <p>
+                  Public users will see enabled demo categories on the Demo
+                  page. A demo test should normally have 10 high-quality
+                  questions.
+                </p>
+              </div>
             </div>
 
-            <div className="dashboard-card">
-              <Settings size={34} />
+            <div className="create-exam-form">
+              <label className="form-field">
+                <span>Category</span>
 
-              <h2>Demo Rules</h2>
+                <select
+                  value={form.categoryId}
+                  onChange={(event) => handleCategoryChange(event.target.value)}
+                >
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-              <p>
-                {form.demoEnabled ? 'Demo is enabled.' : 'Demo is disabled.'}
-              </p>
+              <label className="form-field">
+                <span>Demo Test</span>
 
-              <div className="flow-list">
-                <div className="flow-item">
-                  <strong>Questions</strong>
-                  <span>{form.demoQuestionLimit}</span>
+                <select
+                  value={form.demoExamId}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      demoExamId: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="">Select approved test for demo</option>
+
+                  {approvedExamsForSelectedCategory.map((exam) => (
+                    <option key={exam.id} value={exam.id}>
+                      {exam.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {approvedExamsForSelectedCategory.length === 0 ? (
+                <div className="alert-message alert-error create-exam-note">
+                  <AlertCircle size={18} />
+                  No approved tests are mapped to this category yet. Publish or
+                  map an approved test before enabling public demo.
                 </div>
+              ) : null}
 
-                <div className="flow-item">
-                  <strong>Duration</strong>
-                  <span>{form.demoDurationMinutes} minutes</span>
-                </div>
+              <label className="form-field checkbox-field">
+                <input
+                  type="checkbox"
+                  checked={form.demoEnabled}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      demoEnabled: event.target.checked,
+                    }))
+                  }
+                />
 
-                <div className="flow-item">
-                  <strong>Explanations</strong>
-                  <span>{form.showDemoExplanations ? 'Visible' : 'Hidden'}</span>
-                </div>
+                <span>Enable public demo for this category</span>
+              </label>
 
-                <div className="flow-item">
-                  <strong>Register CTA</strong>
-                  <span>{form.showRegisterCta ? 'Visible' : 'Hidden'}</span>
+              <label className="form-field">
+                <span>Demo Question Limit</span>
+
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={form.demoQuestionLimit}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      demoQuestionLimit: Number(event.target.value),
+                    }))
+                  }
+                />
+              </label>
+
+              <label className="form-field">
+                <span>Demo Duration Minutes</span>
+
+                <input
+                  type="number"
+                  min={1}
+                  max={180}
+                  value={form.demoDurationMinutes}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      demoDurationMinutes: Number(event.target.value),
+                    }))
+                  }
+                />
+              </label>
+
+              <label className="form-field checkbox-field">
+                <input
+                  type="checkbox"
+                  checked={form.showDemoExplanations}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      showDemoExplanations: event.target.checked,
+                    }))
+                  }
+                />
+
+                <span>Show explanations after demo result</span>
+              </label>
+
+              <label className="form-field checkbox-field">
+                <input
+                  type="checkbox"
+                  checked={form.showRegisterCta}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      showRegisterCta: event.target.checked,
+                    }))
+                  }
+                />
+
+                <span>Show register button after demo result</span>
+              </label>
+
+              <div className="hero-actions">
+                <button
+                  type="button"
+                  className="primary-button"
+                  disabled={isSaving}
+                  onClick={() => void handleSave()}
+                >
+                  <Save size={18} />
+                  {isSaving ? 'Saving...' : 'Save Demo Settings'}
+                </button>
+              </div>
+            </div>
+          </article>
+
+          <article className="content-card">
+            <div className="section-title-row">
+              <div>
+                <p className="eyebrow">Public Demo Preview</p>
+
+                <h2>What visitors will experience</h2>
+
+                <p>
+                  This preview explains how the selected demo category will
+                  appear to visitors without login.
+                </p>
+              </div>
+            </div>
+
+            <div className="dashboard-grid">
+              <div className="dashboard-card">
+                <Sparkles size={34} />
+
+                <h2>{selectedCategory?.name || 'Select Category'}</h2>
+
+                <p>
+                  {selectedCategory?.description ||
+                    'Choose a category to configure public demo access.'}
+                </p>
+              </div>
+
+              <div className="dashboard-card">
+                <Settings size={34} />
+
+                <h2>Demo Rules</h2>
+
+                <p>
+                  {form.demoEnabled ? 'Demo is enabled.' : 'Demo is disabled.'}
+                </p>
+
+                <div className="flow-list">
+                  <div className="flow-item">
+                    <strong>Questions</strong>
+                    <span>{form.demoQuestionLimit}</span>
+                  </div>
+
+                  <div className="flow-item">
+                    <strong>Duration</strong>
+                    <span>{form.demoDurationMinutes} minutes</span>
+                  </div>
+
+                  <div className="flow-item">
+                    <strong>Explanations</strong>
+                    <span>{form.showDemoExplanations ? 'Visible' : 'Hidden'}</span>
+                  </div>
+
+                  <div className="flow-item">
+                    <strong>Register CTA</strong>
+                    <span>{form.showRegisterCta ? 'Visible' : 'Hidden'}</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <div className="alert-message alert-success create-exam-note">
-            <Eye size={18} />
-            Public demo URL will be:
-            <strong>{publicDemoUrl}</strong>
-          </div>
+            <div className="alert-message alert-success create-exam-note">
+              <Eye size={18} />
+              Public demo URL will be:
+              <strong>{publicDemoUrl}</strong>
+            </div>
 
-          <div className="alert-message alert-error create-exam-note">
-            <strong>Important:</strong>
-            Public demo works only when the selected demo test is approved and
-            has questions.
-          </div>
-        </article>
-      </section>
+            <div className="alert-message alert-error create-exam-note">
+              <strong>Important:</strong>
+              Public demo works only when the selected demo test is approved,
+              mapped to this category, and has questions. Guest access also
+              requires the public demo RLS SQL from Step 83A.
+            </div>
+          </article>
+        </section>
+      )}
     </main>
   )
 }

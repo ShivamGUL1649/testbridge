@@ -128,6 +128,43 @@ function getCategoryName(
   )
 }
 
+function getCleanExamDescription(
+  test: ApprovedExam,
+  categories: ExamCategory[],
+): string {
+  const rawDescription = (test.description || '').replace(/\s+/g, ' ').trim()
+  const categoryName = getCategoryName(test.category_slug, categories)
+
+  const defaultDescription = `Practice ${test.title} with timed single-choice questions, scoring, answer review, and explanations under ${categoryName}.`
+
+  if (!rawDescription) {
+    return defaultDescription
+  }
+
+  const lowerDescription = rawDescription.toLowerCase()
+
+  const looksLikeAiInternalMetadata =
+    lowerDescription.includes('ai generated test from firestore') ||
+    lowerDescription.includes('firestore test id') ||
+    lowerDescription.includes('prompt:') ||
+    lowerDescription.includes('testbridge category:') ||
+    lowerDescription.includes('question count:') ||
+    lowerDescription.includes('correct answer rule:') ||
+    lowerDescription.includes('important rules:') ||
+    lowerDescription.includes('topic coverage:') ||
+    lowerDescription.includes('difficulty distribution:')
+
+  if (looksLikeAiInternalMetadata) {
+    return defaultDescription
+  }
+
+  if (rawDescription.length > 220) {
+    return `${rawDescription.slice(0, 220).trim()}...`
+  }
+
+  return rawDescription
+}
+
 function getPercentage(score: number, totalMarks: number): number {
   if (!totalMarks) return 0
 
@@ -525,7 +562,7 @@ function StudentAvailableExamsPage({ profile }: StudentAvailableExamsPageProps) 
 
                     <h2>{test.title}</h2>
 
-                    <p>{test.description || 'Practice this topic with timed questions.'}</p>
+                    <p>{getCleanExamDescription(test, selectedCategories)}</p>
                   </div>
 
                   {latestAttempt ? (
