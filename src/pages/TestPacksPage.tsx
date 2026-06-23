@@ -1,256 +1,372 @@
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowRight,
+  BookOpenCheck,
   CheckCircle2,
-  Cloud,
-  Code2,
-  Database,
-  FileCode2,
-  ShieldCheck,
+  ClipboardList,
+  FolderKanban,
+  Loader2,
+  PlayCircle,
+  Search,
   Sparkles,
 } from 'lucide-react'
 
-type TestPack = {
-  title: string
-  description: string
-  level: string
-  tests: string
-  status: string
-  icon: React.ReactNode
+import { supabase } from '../lib/supabaseClient'
+import SupportContact from '../components/SupportContact'
+
+type ExamCategory = {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  seo_description: string | null
+  page_heading: string | null
+  page_subheading: string | null
+  is_active: boolean
+  allow_public_landing: boolean
+  demo_enabled: boolean
+  free_demo_count: number
+  display_order: number
+  is_featured: boolean
 }
 
-const testPacks: TestPack[] = [
-  {
-    title: 'GCP Practice Tests',
-    description:
-      'Practice Google Cloud concepts, Gen AI topics, services, architecture basics, and certification-style scenarios.',
-    level: 'Beginner to Intermediate',
-    tests: 'Demo + Paid practice sets',
-    status: 'Available soon',
-    icon: <Cloud size={34} />,
-  },
-  {
-    title: 'AWS Practice Tests',
-    description:
-      'Prepare for AWS cloud fundamentals, core services, security basics, pricing, and real-world cloud scenarios.',
-    level: 'Beginner',
-    tests: 'Demo + Paid practice sets',
-    status: 'Available soon',
-    icon: <Cloud size={34} />,
-  },
-  {
-    title: 'Java Interview Tests',
-    description:
-      'Practice Java, OOP, collections, exceptions, streams, coding concepts, and common interview questions.',
-    level: 'Beginner to Advanced',
-    tests: 'Demo + Paid practice sets',
-    status: 'Available soon',
-    icon: <Code2 size={34} />,
-  },
-  {
-    title: 'Selenium Automation Tests',
-    description:
-      'Prepare for Selenium WebDriver, locators, waits, frameworks, TestNG, automation design, and interview scenarios.',
-    level: 'Intermediate',
-    tests: 'Demo + Paid practice sets',
-    status: 'Available soon',
-    icon: <ShieldCheck size={34} />,
-  },
-  {
-    title: 'Playwright Automation Tests',
-    description:
-      'Practice Playwright concepts, locators, assertions, browser contexts, test design, and modern automation scenarios.',
-    level: 'Intermediate',
-    tests: 'Demo + Paid practice sets',
-    status: 'Available soon',
-    icon: <FileCode2 size={34} />,
-  },
-  {
-    title: 'SQL Practice Tests',
-    description:
-      'Improve SQL basics, joins, grouping, filtering, query scenarios, and database interview preparation.',
-    level: 'Beginner to Intermediate',
-    tests: 'Demo + Paid practice sets',
-    status: 'Available soon',
-    icon: <Database size={34} />,
-  },
-]
+type PublicExam = {
+  id: string
+  title: string
+  category_slug: string | null
+  status: 'APPROVED'
+  is_demo: boolean | null
+  is_free_demo: boolean | null
+  demo_slug: string | null
+}
+
+type CategoryCard = ExamCategory & {
+  approvedCount: number
+  demoCount: number
+  firstDemoSlug: string | null
+}
+
+function getFallbackDescription(category: ExamCategory): string {
+  return (
+    category.page_subheading ||
+    category.seo_description ||
+    category.description ||
+    'Practice category-based tests with scoring, explanations, and focused preparation.'
+  )
+}
 
 function TestPacksPage() {
+  const [categories, setCategories] = useState<ExamCategory[]>([])
+  const [exams, setExams] = useState<PublicExam[]>([])
+  const [searchTerm, setSearchTerm] = useState('')
+  const [isLoading, setIsLoading] = useState(true)
+  const [errorMessage, setErrorMessage] = useState('')
+
+  async function loadTestPacks() {
+    setIsLoading(true)
+    setErrorMessage('')
+
+    try {
+      const [categoriesResponse, examsResponse] = await Promise.all([
+        supabase
+          .from('exam_categories')
+          .select(
+            [
+              'id',
+              'name',
+              'slug',
+              'description',
+              'seo_description',
+              'page_heading',
+              'page_subheading',
+              'is_active',
+              'allow_public_landing',
+              'demo_enabled',
+              'free_demo_count',
+              'display_order',
+              'is_featured',
+            ].join(', '),
+          )
+          .eq('is_active', true)
+          .eq('allow_public_landing', true)
+          .order('is_featured', { ascending: false })
+          .order('display_order', { ascending: true })
+          .order('name', { ascending: true }),
+
+        supabase
+          .from('exams')
+          .select('id, title, category_slug, status, is_demo, is_free_demo, demo_slug')
+          .eq('status', 'APPROVED'),
+      ])
+
+      if (categoriesResponse.error) {
+        throw new Error(categoriesResponse.error.message)
+      }
+
+      if (examsResponse.error) {
+        throw new Error(examsResponse.error.message)
+      }
+
+      setCategories(((categoriesResponse.data || []) as unknown) as ExamCategory[])
+      setExams(((examsResponse.data || []) as unknown) as PublicExam[])
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Unable to load TestBridge test packs.'
+
+      setErrorMessage(message)
+      setCategories([])
+      setExams([])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    document.title = 'Test Packs | TestBridge'
+    void loadTestPacks()
+  }, [])
+
+  const categoryCards = useMemo<CategoryCard[]>(() => {
+    return categories.map((category) => {
+      const categoryExams = exams.filter(
+        (exam) => exam.category_slug === category.slug,
+      )
+
+      const demoExams = categoryExams.filter(
+        (exam) => Boolean(exam.is_demo) && Boolean(exam.demo_slug),
+      )
+
+      return {
+        ...category,
+        approvedCount: categoryExams.length,
+        demoCount: demoExams.length,
+        firstDemoSlug: demoExams[0]?.demo_slug || null,
+      }
+    })
+  }, [categories, exams])
+
+  const filteredCategoryCards = useMemo(() => {
+    const search = searchTerm.trim().toLowerCase()
+
+    if (!search) {
+      return categoryCards
+    }
+
+    return categoryCards.filter((category) => {
+      return (
+        category.name.toLowerCase().includes(search) ||
+        category.slug.toLowerCase().includes(search) ||
+        getFallbackDescription(category).toLowerCase().includes(search)
+      )
+    })
+  }, [categoryCards, searchTerm])
+
+  const featuredCount = categoryCards.filter((category) => category.is_featured).length
+  const totalApprovedTests = categoryCards.reduce(
+    (total, category) => total + category.approvedCount,
+    0,
+  )
+  const totalDemoTests = categoryCards.reduce(
+    (total, category) => total + category.demoCount,
+    0,
+  )
+
   return (
     <main className="page-shell">
       <section className="dashboard-header">
         <div>
-          <p className="eyebrow">Practice Test Packs</p>
-
-          <h1>Choose a practice pack and start preparing</h1>
-
+          <p className="eyebrow">Test Packs</p>
+          <h1>Explore TestBridge practice categories</h1>
           <p>
-            TestBridge provides focused practice tests for cloud certifications,
-            QA automation, programming interviews, SQL, and technical skill
-            preparation. Start with a free demo test and continue with
-            affordable practice packs.
+            Browse Admin-managed practice categories. Each category has its own
+            public landing page, SEO content, demos, and registered test access.
           </p>
         </div>
 
         <div className="dashboard-actions">
+          <Link to="/demo" className="secondary-button">
+            <PlayCircle size={18} />
+            Free Demo
+          </Link>
+
           <Link to="/register" className="primary-button">
-            <Sparkles size={18} />
-            Start Free Demo
+            Register
+            <ArrowRight size={18} />
           </Link>
         </div>
       </section>
 
+      <section className="dashboard-grid">
+        <article className="dashboard-card">
+          <div className="section-title-row">
+            <FolderKanban size={22} />
+            <span className="status-pill">Categories</span>
+          </div>
+
+          <h2>{categoryCards.length}</h2>
+
+          <p>Active public practice categories configured by Admin.</p>
+        </article>
+
+        <article className="dashboard-card">
+          <div className="section-title-row">
+            <ClipboardList size={22} />
+            <span className="status-pill">Approved Tests</span>
+          </div>
+
+          <h2>{totalApprovedTests}</h2>
+
+          <p>Total approved tests available across public categories.</p>
+        </article>
+
+        <article className="dashboard-card">
+          <div className="section-title-row">
+            <Sparkles size={22} />
+            <span className="status-pill">Demos</span>
+          </div>
+
+          <h2>{totalDemoTests}</h2>
+
+          <p>Free demo tests available for public visitors.</p>
+        </article>
+      </section>
+
+      <SupportContact
+        variant="banner"
+        title="Need help choosing a practice pack?"
+        description="Contact TestBridge support for help with categories, demo tests, registration, or future paid access."
+      />
+
       <section className="content-card">
         <div className="section-title-row">
           <div>
-            <h2>Available and upcoming packs</h2>
-
+            <h2>Find a practice category</h2>
             <p>
-              Each pack is designed to help learners practice topic-wise,
-              attempt timed tests, view instant results, and review explanations
-              after submission.
+              All cards below are generated dynamically from Admin-created
+              categories.
             </p>
           </div>
+
+          <span className="status-pill">{featuredCount} featured</span>
         </div>
 
-        <div className="dashboard-grid">
-          {testPacks.map((pack) => (
-            <article className="dashboard-card" key={pack.title}>
-              {pack.icon}
+        <div className="create-exam-form">
+          <label className="form-field" htmlFor="categorySearch">
+            <span>Search Category</span>
+            <div className="input-with-icon">
+              <Search size={18} />
+              <input
+                id="categorySearch"
+                type="search"
+                value={searchTerm}
+                placeholder="Search by category, cloud, testing, Java, SQL..."
+                onChange={(event) => setSearchTerm(event.target.value)}
+              />
+            </div>
+          </label>
+        </div>
+      </section>
 
-              <h2>{pack.title}</h2>
+      {errorMessage ? (
+        <div className="alert-message error-message">{errorMessage}</div>
+      ) : null}
 
-              <p>{pack.description}</p>
+      {isLoading ? (
+        <section className="placeholder-card">
+          <Loader2 size={42} className="spin-icon" />
+          <h1>Loading test packs...</h1>
+          <p>Please wait while TestBridge loads active public categories.</p>
+        </section>
+      ) : null}
 
-              <div className="flow-list">
-                <div className="flow-item">
-                  <strong>Level</strong>
-                  <span>{pack.level}</span>
+      {!isLoading && filteredCategoryCards.length === 0 ? (
+        <section className="placeholder-card">
+          <BookOpenCheck size={42} />
+          <h1>No test pack found</h1>
+          <p>
+            No active public category matches your search. Try another keyword
+            or ask Admin to enable public landing for the category.
+          </p>
+        </section>
+      ) : null}
+
+      {!isLoading && filteredCategoryCards.length > 0 ? (
+        <section className="content-grid">
+          {filteredCategoryCards.map((category) => (
+            <article className="exam-card" key={category.id}>
+              <div className="exam-card-header">
+                <div>
+                  <p className="eyebrow">
+                    {category.is_featured ? 'Featured Category' : 'Practice Category'}
+                  </p>
+
+                  <h2>{category.page_heading || category.name}</h2>
+
+                  <p>{getFallbackDescription(category)}</p>
                 </div>
 
-                <div className="flow-item">
-                  <strong>Access</strong>
-                  <span>{pack.tests}</span>
+                {category.demoCount > 0 ? (
+                  <span className="status-pill status-approved">
+                    <CheckCircle2 size={16} />
+                    Demo Available
+                  </span>
+                ) : (
+                  <span className="status-pill">Coming Soon</span>
+                )}
+              </div>
+
+              <div className="exam-meta-grid">
+                <div>
+                  <span>Approved Tests</span>
+                  <strong>{category.approvedCount}</strong>
                 </div>
 
-                <div className="flow-item">
-                  <strong>Status</strong>
-                  <span>{pack.status}</span>
+                <div>
+                  <span>Free Demos</span>
+                  <strong>{category.demoCount}</strong>
                 </div>
+
+                <div>
+                  <span>Public URL</span>
+                  <strong>/practice/{category.slug}</strong>
+                </div>
+
+                <div>
+                  <span>Access</span>
+                  <strong>Profile Category</strong>
+                </div>
+              </div>
+
+              <div className="exam-card-actions">
+                <Link
+                  to={`/practice/${category.slug}`}
+                  className="primary-button"
+                >
+                  View Landing Page
+                  <ArrowRight size={18} />
+                </Link>
+
+                {category.firstDemoSlug ? (
+                  <Link
+                    to={`/demo/${category.firstDemoSlug}`}
+                    className="secondary-button"
+                  >
+                    <PlayCircle size={18} />
+                    Start Demo
+                  </Link>
+                ) : (
+                  <Link to="/register" className="secondary-button">
+                    Register Interest
+                  </Link>
+                )}
               </div>
             </article>
           ))}
-        </div>
-      </section>
-
-      <section className="content-grid two-column-grid">
-        <article className="content-card">
-          <div className="section-title-row">
-            <div>
-              <p className="eyebrow">Free Demo</p>
-
-              <h2>Try before choosing a pack</h2>
-
-              <p>
-                A free demo test helps you understand the test experience,
-                question format, timer, result screen, and explanation review.
-              </p>
-            </div>
-          </div>
-
-          <div className="flow-list">
-            <div className="flow-item">
-              <strong>
-                <CheckCircle2 size={17} /> Attempt a sample test
-              </strong>
-
-              <span>
-                Get a feel of the platform before selecting a full practice
-                pack.
-              </span>
-            </div>
-
-            <div className="flow-item">
-              <strong>
-                <CheckCircle2 size={17} /> Review your answers
-              </strong>
-
-              <span>
-                Check correct answers and explanations after submitting the
-                test.
-              </span>
-            </div>
-
-            <div className="flow-item">
-              <strong>
-                <CheckCircle2 size={17} /> Decide your next pack
-              </strong>
-
-              <span>
-                Choose the category that matches your certification or interview
-                goal.
-              </span>
-            </div>
-          </div>
-        </article>
-
-        <article className="content-card">
-          <div className="section-title-row">
-            <div>
-              <p className="eyebrow">How to Start</p>
-
-              <h2>Simple practice flow</h2>
-
-              <p>
-                Register, choose a test, attempt it with timer, submit your
-                answers, and review your score with explanations.
-              </p>
-            </div>
-          </div>
-
-          <div className="flow-list">
-            <div className="flow-item">
-              <strong>1. Create account</strong>
-              <span>Register as a Test Taker.</span>
-            </div>
-
-            <div className="flow-item">
-              <strong>2. Select test</strong>
-              <span>Open available practice tests from your dashboard.</span>
-            </div>
-
-            <div className="flow-item">
-              <strong>3. Attempt and submit</strong>
-              <span>Complete the test and submit your answers.</span>
-            </div>
-
-            <div className="flow-item">
-              <strong>4. Review result</strong>
-              <span>Check score, correct answers, and explanations.</span>
-            </div>
-          </div>
-
-          <div className="hero-actions">
-            <Link to="/register" className="primary-button">
-              Start Free Demo
-              <ArrowRight size={18} />
-            </Link>
-
-            <Link to="/login" className="secondary-button">
-              Login
-            </Link>
-          </div>
-        </article>
-      </section>
-
-      <section className="content-card">
-        <div className="alert-message alert-error create-exam-note">
-          <strong>Note:</strong>
-          TestBridge is an independent practice platform. Certification and
-          technology names are used only to describe preparation categories.
-        </div>
-      </section>
+        </section>
+      ) : null}
     </main>
   )
 }

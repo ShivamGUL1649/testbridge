@@ -78,6 +78,10 @@ function Navbar({ profile }: NavbarProps) {
             <NavLink to="/student/results" className="nav-link">
               My Results
             </NavLink>
+
+            <NavLink to="/student/profile" className="nav-link">
+              My Profile
+            </NavLink>
           </>
         ) : null}
 
@@ -97,6 +101,10 @@ function Navbar({ profile }: NavbarProps) {
           <>
             <NavLink to="/admin/exams/pending" className="nav-link">
               Manage Tests
+            </NavLink>
+
+            <NavLink to="/admin/demo-settings" className="nav-link">
+              Demo Settings
             </NavLink>
 
             <NavLink to="/admin/ai-test-generator" className="nav-link">
@@ -137,7 +145,7 @@ function Navbar({ profile }: NavbarProps) {
               Login
             </NavLink>
 
-            <NavLink to="/register" className="primary-button">
+            <NavLink to="/demo" className="primary-button">
               Start Free Demo
             </NavLink>
           </>

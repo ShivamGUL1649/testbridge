@@ -1,205 +1,319 @@
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  Award,
-  BookOpenCheck,
+  ArrowRight,
+  Bot,
   CheckCircle2,
+  ClipboardCheck,
   Clock,
-  Cloud,
-  Code2,
-  Database,
   FileCheck2,
-  GraduationCap,
-  ShieldCheck,
+  FolderKanban,
+  LockKeyhole,
+  PlayCircle,
+  Sparkles,
   Target,
   Users,
 } from 'lucide-react'
 
+import { supabase } from '../lib/supabaseClient'
+import SupportContact from '../components/SupportContact'
+
+type HomeCategory = {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  page_heading: string | null
+  page_subheading: string | null
+  seo_description: string | null
+  is_featured: boolean
+  display_order: number
+}
+
+type HomeExam = {
+  id: string
+  category_slug: string | null
+  is_demo: boolean | null
+  demo_slug: string | null
+}
+
+type HomeCategoryCard = HomeCategory & {
+  demoSlug: string | null
+  approvedCount: number
+}
+
+function getCategoryDescription(category: HomeCategory): string {
+  return (
+    category.page_subheading ||
+    category.seo_description ||
+    category.description ||
+    'Practice category-based tests with scoring, explanations, and focused preparation.'
+  )
+}
+
 function HomePage() {
+  const [categories, setCategories] = useState<HomeCategory[]>([])
+  const [exams, setExams] = useState<HomeExam[]>([])
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadHomeCategories() {
+      const [categoriesResponse, examsResponse] = await Promise.all([
+        supabase
+          .from('exam_categories')
+          .select(
+            'id, name, slug, description, page_heading, page_subheading, seo_description, is_featured, display_order',
+          )
+          .eq('is_active', true)
+          .eq('allow_public_landing', true)
+          .order('is_featured', { ascending: false })
+          .order('display_order', { ascending: true })
+          .order('name', { ascending: true })
+          .limit(6),
+
+        supabase
+          .from('exams')
+          .select('id, category_slug, is_demo, demo_slug')
+          .eq('status', 'APPROVED'),
+      ])
+
+      if (!isMounted) {
+        return
+      }
+
+      if (categoriesResponse.error) {
+        console.error(
+          'Unable to load home categories:',
+          categoriesResponse.error.message,
+        )
+        setCategories([])
+      } else {
+        setCategories(((categoriesResponse.data || []) as unknown) as HomeCategory[])
+      }
+
+      if (examsResponse.error) {
+        console.error('Unable to load home exams:', examsResponse.error.message)
+        setExams([])
+      } else {
+        setExams(((examsResponse.data || []) as unknown) as HomeExam[])
+      }
+    }
+
+    void loadHomeCategories()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const categoryCards = useMemo<HomeCategoryCard[]>(() => {
+    return categories.map((category) => {
+      const categoryExams = exams.filter(
+        (exam) => exam.category_slug === category.slug,
+      )
+      const demoExam = categoryExams.find(
+        (exam) => Boolean(exam.is_demo) && Boolean(exam.demo_slug),
+      )
+
+      return {
+        ...category,
+        approvedCount: categoryExams.length,
+        demoSlug: demoExam?.demo_slug || null,
+      }
+    })
+  }, [categories, exams])
+
   return (
     <main className="home-page">
       <section className="hero-section">
         <div className="hero-content">
-          <p className="eyebrow">TestBridge Practice Platform</p>
+          <p className="eyebrow">TestBridge Practice Test Platform</p>
 
-          <h1>
-            Practice for certifications and interviews with online tests,
-            instant results, and explanations.
-          </h1>
+          <h1>Practice certification-style tests before the real exam.</h1>
 
           <p className="hero-description">
-            TestBridge helps you prepare for cloud certifications, QA
-            automation, programming interviews, SQL, and technical assessments
-            through structured practice tests.
+            TestBridge helps learners attempt realistic practice tests with
+            timers, scoring, answer review, and explanations. Start with a free
+            demo test without login, then create an account for full practice
+            access.
           </p>
 
           <div className="hero-actions">
-            <Link to="/register" className="primary-button">
+            <Link to="/demo" className="primary-button">
+              <Sparkles size={18} />
               Start Free Demo
             </Link>
 
-            <Link to="/login" className="secondary-button">
-              Login
+            <Link to="/test-packs" className="secondary-button">
+              View Test Packs
+              <ArrowRight size={18} />
             </Link>
-          </div>
-
-          <div className="trust-points">
-            <span>
-              <CheckCircle2 size={16} />
-              Timed practice tests
-            </span>
-
-            <span>
-              <CheckCircle2 size={16} />
-              Instant score
-            </span>
-
-            <span>
-              <CheckCircle2 size={16} />
-              Answer explanations
-            </span>
           </div>
         </div>
 
         <div className="hero-card">
           <div className="hero-card-header">
-            <span>How TestBridge Helps You</span>
+            <span>Why learners use TestBridge</span>
           </div>
 
           <div className="flow-list">
             <div className="flow-item">
               <strong>
-                <BookOpenCheck size={17} /> Choose a Test
+                <ClipboardCheck size={17} /> Free Demo
               </strong>
-              <span>
-                Select a practice test from certification, interview, or skill
-                categories.
-              </span>
+              <span>Try a short public demo test without creating an account.</span>
             </div>
 
             <div className="flow-item">
               <strong>
-                <Clock size={17} /> Attempt with Timer
+                <Clock size={17} /> Timed Practice
               </strong>
-              <span>
-                Practice in a real test-like environment with time limits.
-              </span>
+              <span>Attempt tests in an exam-like timed environment.</span>
             </div>
 
             <div className="flow-item">
               <strong>
-                <Target size={17} /> Check Your Score
+                <FileCheck2 size={17} /> Instant Review
               </strong>
-              <span>
-                Get your score, percentage, and pass/fail result instantly.
-              </span>
+              <span>Check score, answers, and explanations after submission.</span>
             </div>
 
             <div className="flow-item">
               <strong>
-                <FileCheck2 size={17} /> Review Explanations
+                <Bot size={17} /> Admin Reviewed
               </strong>
-              <span>
-                Understand correct answers and improve your weak areas.
-              </span>
+              <span>AI-assisted tests can be reviewed before publishing.</span>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="content-card home-section-card">
-        <div className="section-title-row">
-          <div>
-            <p className="eyebrow">Practice Categories</p>
+      <SupportContact
+        variant="banner"
+        title="Need help choosing the right practice category?"
+        description="Contact TestBridge support for help with demo access, registration, test packs, or account-related questions."
+      />
 
-            <h2>Prepare for the skills that matter</h2>
+      <section className="stats-grid">
+        <article className="stat-card">
+          <span>Demo Access</span>
+          <strong>No Login</strong>
+        </article>
 
-            <p>
-              Start with focused practice sets for cloud, QA automation,
-              programming, SQL, and technical interview preparation.
-            </p>
-          </div>
-        </div>
+        <article className="stat-card">
+          <span>Practice Mode</span>
+          <strong>Timer + Score</strong>
+        </article>
 
-        <div className="dashboard-grid">
-          <div className="dashboard-card">
-            <Cloud size={34} />
+        <article className="stat-card">
+          <span>Learning Support</span>
+          <strong>Answer Review</strong>
+        </article>
 
-            <h2>GCP Practice Tests</h2>
-
-            <p>
-              Practice Google Cloud and Gen AI certification-style concepts with
-              structured MCQ tests.
-            </p>
-          </div>
-
-          <div className="dashboard-card">
-            <Cloud size={34} />
-
-            <h2>AWS Practice Tests</h2>
-
-            <p>
-              Prepare for AWS cloud fundamentals, services, scenarios, and
-              certification-style questions.
-            </p>
-          </div>
-
-          <div className="dashboard-card">
-            <Code2 size={34} />
-
-            <h2>Java Interview Tests</h2>
-
-            <p>
-              Practice Java, OOP, collections, exceptions, streams, and common
-              interview scenarios.
-            </p>
-          </div>
-
-          <div className="dashboard-card">
-            <ShieldCheck size={34} />
-
-            <h2>QA Automation Tests</h2>
-
-            <p>
-              Prepare for Selenium, Playwright, API testing, manual testing, and
-              automation interviews.
-            </p>
-          </div>
-
-          <div className="dashboard-card">
-            <Database size={34} />
-
-            <h2>SQL Practice Tests</h2>
-
-            <p>
-              Improve SQL basics, joins, queries, database scenarios, and
-              interview readiness.
-            </p>
-          </div>
-
-          <div className="dashboard-card">
-            <GraduationCap size={34} />
-
-            <h2>More Tests Coming</h2>
-
-            <p>
-              Azure, Python, DevOps, Agile, Scrum, and advanced technical packs
-              will be added gradually.
-            </p>
-          </div>
-        </div>
+        <article className="stat-card">
+          <span>Admin Control</span>
+          <strong>Approved Tests</strong>
+        </article>
       </section>
+
+      {categoryCards.length > 0 ? (
+        <section className="content-card">
+          <div className="section-title-row">
+            <div>
+              <p className="eyebrow">Featured Practice Categories</p>
+              <h2>Start with an Admin-managed category.</h2>
+              <p>
+                These category cards are generated dynamically from Admin-created
+                public categories. Each card links to its SEO landing page.
+              </p>
+            </div>
+
+            <Link to="/test-packs" className="secondary-button">
+              View All
+              <ArrowRight size={18} />
+            </Link>
+          </div>
+
+          <section className="content-grid">
+            {categoryCards.map((category) => (
+              <article className="exam-card" key={category.id}>
+                <div className="exam-card-header">
+                  <div>
+                    <p className="eyebrow">
+                      {category.is_featured ? 'Featured Category' : 'Practice Category'}
+                    </p>
+
+                    <h2>{category.page_heading || category.name}</h2>
+
+                    <p>{getCategoryDescription(category)}</p>
+                  </div>
+
+                  {category.demoSlug ? (
+                    <span className="status-pill status-approved">
+                      <CheckCircle2 size={16} />
+                      Demo
+                    </span>
+                  ) : (
+                    <span className="status-pill">Category</span>
+                  )}
+                </div>
+
+                <div className="exam-meta-grid">
+                  <div>
+                    <span>Approved Tests</span>
+                    <strong>{category.approvedCount}</strong>
+                  </div>
+
+                  <div>
+                    <span>Public Page</span>
+                    <strong>/practice/{category.slug}</strong>
+                  </div>
+                </div>
+
+                <div className="exam-card-actions">
+                  <Link to={`/practice/${category.slug}`} className="primary-button">
+                    View Category
+                    <ArrowRight size={18} />
+                  </Link>
+
+                  {category.demoSlug ? (
+                    <Link to={`/demo/${category.demoSlug}`} className="secondary-button">
+                      <PlayCircle size={18} />
+                      Demo
+                    </Link>
+                  ) : null}
+                </div>
+              </article>
+            ))}
+          </section>
+        </section>
+      ) : (
+        <section className="content-card">
+          <div className="section-title-row">
+            <div>
+              <p className="eyebrow">Practice Categories</p>
+              <h2>Public categories will appear here.</h2>
+              <p>
+                Ask Admin to create a category and enable public landing to show
+                it on the home page.
+              </p>
+            </div>
+
+            <FolderKanban size={28} />
+          </div>
+        </section>
+      )}
 
       <section className="content-grid two-column-grid">
         <article className="content-card">
           <div className="section-title-row">
             <div>
               <p className="eyebrow">For Learners</p>
-
-              <h2>Practice, review, and improve</h2>
-
+              <h2>Build confidence before certification exams.</h2>
               <p>
-                TestBridge is useful when you want to check your preparation
-                level before interviews, certifications, or internal skill
+                Practice topic-wise tests, understand mistakes, and improve
+                readiness before attempting final certification or internal
                 assessments.
               </p>
             </div>
@@ -207,152 +321,66 @@ function HomePage() {
 
           <div className="flow-list">
             <div className="flow-item">
-              <strong>Attempt practice tests</strong>
-
-              <span>
-                Select available tests and complete them in a timed environment.
-              </span>
+              <CheckCircle2 size={18} />
+              <span>Free public demo tests can be enabled per category.</span>
             </div>
 
             <div className="flow-item">
-              <strong>Get instant result</strong>
-
-              <span>
-                View your score, percentage, and pass/fail status immediately.
-              </span>
+              <CheckCircle2 size={18} />
+              <span>Admin can add new categories like GCP, AWS, Java, Selenium, Playwright, SQL, and API testing.</span>
             </div>
 
             <div className="flow-item">
-              <strong>Review correct answers</strong>
-
-              <span>
-                Understand your mistakes with correct answers and explanations.
-              </span>
+              <CheckCircle2 size={18} />
+              <span>Review explanations after submission to learn from each attempt.</span>
             </div>
+          </div>
 
-            <div className="flow-item">
-              <strong>Improve weak areas</strong>
-
-              <span>
-                Use result review to identify topics where more practice is
-                needed.
-              </span>
-            </div>
+          <div className="hero-actions">
+            <Link to="/demo" className="primary-button">
+              Try Demo Test
+              <ArrowRight size={18} />
+            </Link>
           </div>
         </article>
 
         <article className="content-card">
           <div className="section-title-row">
             <div>
-              <p className="eyebrow">For Trainers</p>
-
-              <h2>Create tests for your learners</h2>
-
+              <p className="eyebrow">For Teams</p>
+              <h2>Use structured tests for learning and hiring support.</h2>
               <p>
-                Trainers and test creators can build practice tests, add
-                questions, define passing percentage, and share approved tests
-                with learners.
+                Admins and test creators can prepare controlled assessments for
+                certification readiness, interview screening, and internal skill
+                validation.
               </p>
             </div>
           </div>
 
           <div className="flow-list">
             <div className="flow-item">
-              <strong>Create structured tests</strong>
-
-              <span>
-                Add test title, duration, passing percentage, and description.
-              </span>
+              <Users size={18} />
+              <span>Test creators can prepare tests for review.</span>
             </div>
 
             <div className="flow-item">
-              <strong>Add questions and answers</strong>
-
-              <span>
-                Add MCQs with options, correct answers, marks, and
-                explanations.
-              </span>
+              <LockKeyhole size={18} />
+              <span>Admin approval keeps published content controlled.</span>
             </div>
 
             <div className="flow-item">
-              <strong>Publish after review</strong>
-
-              <span>
-                Tests become available to learners only after approval.
-              </span>
+              <Target size={18} />
+              <span>Results help identify readiness and improvement areas.</span>
             </div>
+          </div>
 
-            <div className="flow-item">
-              <strong>Support practice at scale</strong>
-
-              <span>
-                Use the platform for batches, learners, and repeated practice.
-              </span>
-            </div>
+          <div className="hero-actions">
+            <Link to="/register" className="secondary-button">
+              Create Account
+              <ArrowRight size={18} />
+            </Link>
           </div>
         </article>
-      </section>
-
-      <section className="content-card home-section-card">
-        <div className="section-title-row">
-          <div>
-            <p className="eyebrow">Why choose TestBridge?</p>
-
-            <h2>Simple practice experience with clear learning value</h2>
-
-            <p>
-              The goal is simple: help learners practice more, understand their
-              mistakes, and become more confident before interviews or exams.
-            </p>
-          </div>
-        </div>
-
-        <div className="dashboard-grid">
-          <div className="dashboard-card">
-            <CheckCircle2 size={34} />
-
-            <h2>Reviewed Tests</h2>
-
-            <p>
-              Tests are prepared and reviewed before they are made available to
-              learners.
-            </p>
-          </div>
-
-          <div className="dashboard-card">
-            <Award size={34} />
-
-            <h2>Result Review</h2>
-
-            <p>
-              Learners can review correct answers and explanations after
-              submitting the test.
-            </p>
-          </div>
-
-          <div className="dashboard-card">
-            <Users size={34} />
-
-            <h2>Useful for Learners and Trainers</h2>
-
-            <p>
-              Individuals can practice, and trainers can use the platform to
-              assess learners.
-            </p>
-          </div>
-        </div>
-
-        <div className="alert-message alert-success create-exam-note">
-          <CheckCircle2 size={18} />
-          Start with a free demo test and explore practice packs based on your
-          learning goal.
-        </div>
-
-        <div className="alert-message alert-error create-exam-note">
-          <strong>Note:</strong>
-          TestBridge is an independent practice platform. Certification and
-          technology names are used only to describe preparation categories.
-        </div>
       </section>
     </main>
   )

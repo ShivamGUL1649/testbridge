@@ -1,12 +1,16 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import {
-  BookOpen,
-  ClipboardList,
-  FilePlus2,
+  AlertCircle,
+  ArrowLeft,
+  CheckCircle2,
+  Clock,
+  FileText,
+  FolderKanban,
   Loader2,
   Percent,
-  Timer,
+  PlusCircle,
+  RefreshCw,
 } from 'lucide-react'
 
 import { supabase } from '../lib/supabaseClient'
@@ -16,42 +20,140 @@ type CreateExamPageProps = {
   profile: UserProfile
 }
 
+type ExamCategory = {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  is_active: boolean
+  display_order: number
+}
+
+type CreateExamFormState = {
+  title: string
+  description: string
+  categoryId: string
+  totalQuestions: string
+  totalTimeMinutes: string
+  passingMarks: string
+}
+
+const emptyForm: CreateExamFormState = {
+  title: '',
+  description: '',
+  categoryId: '',
+  totalQuestions: '10',
+  totalTimeMinutes: '45',
+  passingMarks: '78',
+}
+
+function toPositiveInteger(value: string, fallback: number): number {
+  const parsed = Number(value)
+
+  if (!Number.isFinite(parsed)) {
+    return fallback
+  }
+
+  return Math.max(1, Math.floor(parsed))
+}
+
+function toPercentage(value: string, fallback: number): number {
+  const parsed = Number(value)
+
+  if (!Number.isFinite(parsed)) {
+    return fallback
+  }
+
+  return Math.min(100, Math.max(1, Math.floor(parsed)))
+}
+
 function CreateExamPage({ profile }: CreateExamPageProps) {
   const navigate = useNavigate()
 
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [totalTimeMinutes, setTotalTimeMinutes] = useState('30')
-  const [passingPercentage, setPassingPercentage] = useState('70')
-  const [isSaving, setIsSaving] = useState(false)
+  const [categories, setCategories] = useState<ExamCategory[]>([])
+  const [form, setForm] = useState<CreateExamFormState>(emptyForm)
+  const [isLoadingCategories, setIsLoadingCategories] = useState(true)
+  const [isCreating, setIsCreating] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
+
+  const selectedCategory = useMemo(
+    () => categories.find((category) => category.id === form.categoryId) || null,
+    [categories, form.categoryId],
+  )
+
+  async function loadCategories() {
+    setIsLoadingCategories(true)
+    setErrorMessage('')
+
+    const { data, error } = await supabase
+      .from('exam_categories')
+      .select('id, name, slug, description, is_active, display_order')
+      .eq('is_active', true)
+      .order('display_order', { ascending: true })
+      .order('name', { ascending: true })
+
+    if (error) {
+      setErrorMessage(error.message)
+      setCategories([])
+      setIsLoadingCategories(false)
+      return
+    }
+
+    const loadedCategories = ((data || []) as unknown) as ExamCategory[]
+
+    setCategories(loadedCategories)
+
+    if (!form.categoryId && loadedCategories.length > 0) {
+      setForm((current) => ({
+        ...current,
+        categoryId: loadedCategories[0].id,
+      }))
+    }
+
+    setIsLoadingCategories(false)
+  }
+
+  useEffect(() => {
+    void loadCategories()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function updateField<Key extends keyof CreateExamFormState>(
+    key: Key,
+    value: CreateExamFormState[Key],
+  ) {
+    setForm((current) => ({
+      ...current,
+      [key]: value,
+    }))
+  }
 
   function validateForm(): string | null {
-    if (!profile?.id) {
-      return 'Test Creator profile is missing. Please logout and login again.'
-    }
-
     if (profile.role !== 'TUTOR') {
-      return 'Only Test Creator users can create tests.'
+      return 'Only Test Creator can create tests from this page.'
     }
 
-    if (!title.trim()) {
+    if (!form.title.trim()) {
       return 'Test name is required.'
     }
 
-    const timeValue = Number(totalTimeMinutes)
-    const passingValue = Number(passingPercentage)
-
-    if (!Number.isFinite(timeValue) || timeValue <= 0) {
-      return 'Total time must be greater than 0 minutes.'
+    if (!form.categoryId || !selectedCategory) {
+      return 'Please select a category for this test.'
     }
 
-    if (
-      !Number.isFinite(passingValue) ||
-      passingValue < 0 ||
-      passingValue > 100
-    ) {
-      return 'Passing percentage must be between 0 and 100.'
+    if (toPositiveInteger(form.totalQuestions, 10) <= 0) {
+      return 'Total questions must be greater than 0.'
+    }
+
+    if (toPositiveInteger(form.totalTimeMinutes, 45) <= 0) {
+      return 'Total time must be greater than 0.'
+    }
+
+    const passingMarks = toPercentage(form.passingMarks, 78)
+
+    if (passingMarks < 1 || passingMarks > 100) {
+      return 'Passing percentage must be between 1 and 100.'
     }
 
     return null
@@ -60,9 +162,8 @@ function CreateExamPage({ profile }: CreateExamPageProps) {
   async function handleCreateExam(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    if (isSaving) {
-      return
-    }
+    setErrorMessage('')
+    setSuccessMessage('')
 
     const validationError = validateForm()
 
@@ -71,196 +172,247 @@ function CreateExamPage({ profile }: CreateExamPageProps) {
       return
     }
 
-    setIsSaving(true)
-    setErrorMessage('')
-
-    try {
-      const { data, error } = await supabase
-        .from('exams')
-        .insert({
-          title: title.trim(),
-          description: description.trim() || null,
-          total_time_minutes: Number(totalTimeMinutes),
-          passing_marks: Number(passingPercentage),
-          status: 'DRAFT',
-          created_by: profile.id,
-          updated_at: new Date().toISOString(),
-        })
-        .select('id')
-        .single()
-
-      if (error) {
-        setErrorMessage(error.message)
-        return
-      }
-
-      if (!data?.id) {
-        setErrorMessage('Test was not created. Please try again.')
-        return
-      }
-
-      navigate(`/tutor/exam/${data.id}/questions`)
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Something went wrong while creating the test.'
-
-      setErrorMessage(message)
-    } finally {
-      setIsSaving(false)
+    if (!selectedCategory) {
+      setErrorMessage('Selected category was not found. Please refresh and try again.')
+      return
     }
+
+    setIsCreating(true)
+
+    const payload = {
+      title: form.title.trim(),
+      description: form.description.trim() || null,
+      total_questions: toPositiveInteger(form.totalQuestions, 10),
+      total_time_minutes: toPositiveInteger(form.totalTimeMinutes, 45),
+      passing_marks: toPercentage(form.passingMarks, 78),
+      status: 'DRAFT',
+      created_by: profile.id,
+      category_id: selectedCategory.id,
+      category_slug: selectedCategory.slug,
+      is_demo: false,
+      demo_slug: null,
+    }
+
+    const { data, error } = await supabase
+      .from('exams')
+      .insert(payload)
+      .select('id')
+      .single()
+
+    if (error) {
+      setErrorMessage(error.message)
+      setIsCreating(false)
+      return
+    }
+
+    setSuccessMessage('Test created successfully. Redirecting to add questions...')
+
+    window.setTimeout(() => {
+      navigate(`/tutor/exam/${data.id}/questions`)
+    }, 500)
   }
 
   return (
     <main className="page-shell">
       <section className="dashboard-header">
         <div>
-          <p className="eyebrow">Test Creator Setup</p>
-          <h1>Create New Test</h1>
+          <p className="eyebrow">Create Test</p>
+          <h1>Create a category-aligned practice test</h1>
           <p>
-            Create the basic test details first. After saving, you will add
-            questions, options, correct answers, and explanations.
+            Select the right category first so this test appears correctly in
+            public demos, registered user dashboards, SEO pages, and future paid
+            category access.
           </p>
+        </div>
+
+        <div className="dashboard-actions">
+          <Link className="secondary-button" to="/tutor/exams">
+            <ArrowLeft size={18} />
+            My Tests
+          </Link>
+
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => void loadCategories()}
+            disabled={isLoadingCategories}
+          >
+            <RefreshCw size={18} />
+            Refresh Categories
+          </button>
         </div>
       </section>
 
+      {successMessage ? (
+        <div className="alert-message success-message">
+          <CheckCircle2 size={18} />
+          <span>{successMessage}</span>
+        </div>
+      ) : null}
+
       {errorMessage ? (
-        <div className="alert-message alert-error">{errorMessage}</div>
+        <div className="alert-message error-message">
+          <AlertCircle size={18} />
+          <span>{errorMessage}</span>
+        </div>
       ) : null}
 
       <section className="content-grid two-column-grid">
         <article className="content-card">
           <div className="section-title-row">
-            <div>
-              <h2>Test Details</h2>
-              <p>
-                New tests are saved as Draft. Test takers can see tests only
-                after admin approval.
-              </p>
-            </div>
+            <h2>Test Details</h2>
+            <span className="status-pill">Draft</span>
           </div>
 
-          <form className="form-card" onSubmit={handleCreateExam}>
+          <form className="form-card create-exam-form" onSubmit={handleCreateExam}>
             <label className="form-field">
-              <span>Test Name</span>
-              <div className="input-with-icon">
-                <BookOpen size={18} />
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                  placeholder="Example: Cloud Practice Test"
-                  disabled={isSaving}
-                />
-              </div>
+              <span>Category *</span>
+              <select
+                value={form.categoryId}
+                onChange={(event) => updateField('categoryId', event.target.value)}
+                disabled={isLoadingCategories || categories.length === 0}
+              >
+                {isLoadingCategories ? (
+                  <option value="">Loading categories...</option>
+                ) : categories.length === 0 ? (
+                  <option value="">No active categories found</option>
+                ) : (
+                  categories.map((category) => (
+                    <option value={category.id} key={category.id}>
+                      {category.name}
+                    </option>
+                  ))
+                )}
+              </select>
+              <small>
+                Categories are created and managed by Admin from Category Master.
+              </small>
+            </label>
+
+            <label className="form-field">
+              <span>Test Name *</span>
+              <input
+                type="text"
+                value={form.title}
+                onChange={(event) => updateField('title', event.target.value)}
+                placeholder="Example: AWS Solutions Architect Practice Test 1"
+              />
             </label>
 
             <label className="form-field">
               <span>Description</span>
               <textarea
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                placeholder="Describe what this test is about..."
                 rows={4}
-                disabled={isSaving}
+                value={form.description}
+                onChange={(event) => updateField('description', event.target.value)}
+                placeholder="Short description visible to test takers."
               />
             </label>
 
-            <div className="form-grid">
+            <div className="two-column-grid compact-grid">
               <label className="form-field">
-                <span>Total Time Minutes</span>
-                <div className="input-with-icon">
-                  <Timer size={18} />
-                  <input
-                    type="number"
-                    min="1"
-                    value={totalTimeMinutes}
-                    onChange={(event) =>
-                      setTotalTimeMinutes(event.target.value)
-                    }
-                    disabled={isSaving}
-                  />
-                </div>
+                <span>Total Questions *</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={form.totalQuestions}
+                  onChange={(event) =>
+                    updateField('totalQuestions', event.target.value)
+                  }
+                />
               </label>
 
               <label className="form-field">
-                <span>Passing Percentage</span>
-                <div className="input-with-icon">
-                  <Percent size={18} />
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={passingPercentage}
-                    onChange={(event) =>
-                      setPassingPercentage(event.target.value)
-                    }
-                    disabled={isSaving}
-                  />
-                </div>
+                <span>Total Time Minutes *</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={form.totalTimeMinutes}
+                  onChange={(event) =>
+                    updateField('totalTimeMinutes', event.target.value)
+                  }
+                />
               </label>
             </div>
 
-            <button
-              type="submit"
-              className="primary-button full-width-button"
-              disabled={isSaving}
-            >
-              {isSaving ? (
-                <Loader2 size={18} className="spin-icon" />
-              ) : (
-                <FilePlus2 size={18} />
-              )}
-              {isSaving ? 'Creating Test...' : 'Create Test'}
-            </button>
+            <label className="form-field">
+              <span>Passing Percentage *</span>
+              <input
+                type="number"
+                min="1"
+                max="100"
+                value={form.passingMarks}
+                onChange={(event) =>
+                  updateField('passingMarks', event.target.value)
+                }
+              />
+            </label>
+
+            <div className="hero-actions">
+              <button
+                type="submit"
+                className="primary-button"
+                disabled={isCreating || isLoadingCategories || categories.length === 0}
+              >
+                {isCreating ? <Loader2 size={18} /> : <PlusCircle size={18} />}
+                {isCreating ? 'Creating...' : 'Create Test and Add Questions'}
+              </button>
+            </div>
           </form>
         </article>
 
         <article className="content-card">
           <div className="section-title-row">
-            <div>
-              <h2>Test Workflow</h2>
+            <FolderKanban size={22} />
+            <h2>Selected Category</h2>
+          </div>
+
+          {selectedCategory ? (
+            <>
+              <h3>{selectedCategory.name}</h3>
               <p>
-                TestBridge follows a controlled test publishing workflow.
+                {selectedCategory.description ||
+                  'No category description is configured yet.'}
+              </p>
+
+              <div className="flow-list">
+                <div className="flow-item">
+                  <FileText size={18} />
+                  <span>Slug: {selectedCategory.slug}</span>
+                </div>
+
+                <div className="flow-item">
+                  <FileText size={18} />
+                  <span>Total questions: {form.totalQuestions || 0}</span>
+                </div>
+
+                <div className="flow-item">
+                  <Clock size={18} />
+                  <span>Test duration: {form.totalTimeMinutes || 0} minutes</span>
+                </div>
+
+                <div className="flow-item">
+                  <Percent size={18} />
+                  <span>Passing criteria: {form.passingMarks || 0}%</span>
+                </div>
+              </div>
+
+              <div className="create-exam-note">
+                <CheckCircle2 size={18} />
+                <span>
+                  This test will be saved in Draft status. Add questions next,
+                  then submit it for Admin approval.
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="placeholder-card">
+              <p>
+                No active category is available. Ask Admin to create at least one
+                active category first.
               </p>
             </div>
-          </div>
-
-          <div className="flow-list">
-            <div className="flow-item">
-              <strong>1. Create Draft</strong>
-              <span>
-                Save test title, description, timer, and passing percentage.
-              </span>
-            </div>
-
-            <div className="flow-item">
-              <strong>2. Add Questions</strong>
-              <span>
-                Add MCQ questions, options, answers, marks, and explanation.
-              </span>
-            </div>
-
-            <div className="flow-item">
-              <strong>3. Publish for Approval</strong>
-              <span>Test Creator publishes the test for admin review.</span>
-            </div>
-
-            <div className="flow-item">
-              <strong>4. Test Taker Attempt</strong>
-              <span>
-                Test taker passes only when score percentage is greater than or
-                equal to passing percentage.
-              </span>
-            </div>
-          </div>
-
-          <div className="alert-message alert-success create-exam-note">
-            <ClipboardList size={18} />
-            Example: If passing percentage is 78%, test taker must score 78% or
-            more to pass.
-          </div>
+          )}
         </article>
       </section>
     </main>

@@ -1,39 +1,101 @@
-<?xml version="1.0" encoding="UTF-8"?>
 
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>https://www.testsbridge.co.in/</loc>
-    <changefreq>weekly</changefreq>
-    <priority>1.00</priority>
-  </url>
-
-  <url>
-    <loc>https://www.testsbridge.co.in/test-packs</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.90</priority>
-  </url>
-
-  <url>
-    <loc>https://www.testsbridge.co.in/about</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.70</priority>
-  </url>
-
-  <url>
-    <loc>https://www.testsbridge.co.in/contact</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.60</priority>
-  </url>
-
-  <url>
-    <loc>https://www.testsbridge.co.in/terms</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.40</priority>
-  </url>
-
-  <url>
-    <loc>https://www.testsbridge.co.in/privacy</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.40</priority>
-  </url>
+<url>
+<loc>https://www.testsbridge.co.in/</loc>
+<lastmod>2026-06-23</lastmod>
+<changefreq>weekly</changefreq>
+<priority>1.00</priority>
+</url>
+<url>
+<loc>https://www.testsbridge.co.in/test-packs</loc>
+<lastmod>2026-06-23</lastmod>
+<changefreq>weekly</changefreq>
+<priority>0.95</priority>
+</url>
+<url>
+<loc>https://www.testsbridge.co.in/demo</loc>
+<lastmod>2026-06-23</lastmod>
+<changefreq>weekly</changefreq>
+<priority>0.90</priority>
+</url>
+<!--  Dynamic category landing pages. Add newly created public categories here during deployment.  -->
+<url>
+<loc>https://www.testsbridge.co.in/practice/google-gen-ai-leader</loc>
+<lastmod>2026-06-23</lastmod>
+<changefreq>weekly</changefreq>
+<priority>0.95</priority>
+</url>
+<url>
+<loc>https://www.testsbridge.co.in/practice/gcp-practice-tests</loc>
+<lastmod>2026-06-23</lastmod>
+<changefreq>weekly</changefreq>
+<priority>0.88</priority>
+</url>
+<url>
+<loc>https://www.testsbridge.co.in/practice/aws-practice-tests</loc>
+<lastmod>2026-06-23</lastmod>
+<changefreq>weekly</changefreq>
+<priority>0.88</priority>
+</url>
+<url>
+<loc>https://www.testsbridge.co.in/practice/java-interview-tests</loc>
+<lastmod>2026-06-23</lastmod>
+<changefreq>weekly</changefreq>
+<priority>0.84</priority>
+</url>
+<url>
+<loc>https://www.testsbridge.co.in/practice/selenium-practice-tests</loc>
+<lastmod>2026-06-23</lastmod>
+<changefreq>weekly</changefreq>
+<priority>0.84</priority>
+</url>
+<url>
+<loc>https://www.testsbridge.co.in/practice/playwright-practice-tests</loc>
+<lastmod>2026-06-23</lastmod>
+<changefreq>weekly</changefreq>
+<priority>0.84</priority>
+</url>
+<url>
+<loc>https://www.testsbridge.co.in/practice/sql-practice-tests</loc>
+<lastmod>2026-06-23</lastmod>
+<changefreq>weekly</changefreq>
+<priority>0.82</priority>
+</url>
+<url>
+<loc>https://www.testsbridge.co.in/practice/api-testing-practice-tests</loc>
+<lastmod>2026-06-23</lastmod>
+<changefreq>weekly</changefreq>
+<priority>0.82</priority>
+</url>
+<!--  Legacy SEO page kept temporarily for backward compatibility.  -->
+<url>
+<loc>https://www.testsbridge.co.in/google-gen-ai-leader-practice-test</loc>
+<lastmod>2026-06-23</lastmod>
+<changefreq>monthly</changefreq>
+<priority>0.60</priority>
+</url>
+<url>
+<loc>https://www.testsbridge.co.in/about</loc>
+<lastmod>2026-06-23</lastmod>
+<changefreq>monthly</changefreq>
+<priority>0.70</priority>
+</url>
+<url>
+<loc>https://www.testsbridge.co.in/contact</loc>
+<lastmod>2026-06-23</lastmod>
+<changefreq>monthly</changefreq>
+<priority>0.65</priority>
+</url>
+<url>
+<loc>https://www.testsbridge.co.in/terms</loc>
+<lastmod>2026-06-23</lastmod>
+<changefreq>yearly</changefreq>
+<priority>0.30</priority>
+</url>
+<url>
+<loc>https://www.testsbridge.co.in/privacy</loc>
+<lastmod>2026-06-23</lastmod>
+<changefreq>yearly</changefreq>
+<priority>0.30</priority>
+</url>
 </urlset>

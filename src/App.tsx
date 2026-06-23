@@ -18,12 +18,20 @@ import AboutPage from './pages/AboutPage'
 import ContactPage from './pages/ContactPage'
 import TermsPage from './pages/TermsPage'
 import PrivacyPage from './pages/PrivacyPage'
+import GoogleGenAiLeaderPracticePage from './pages/GoogleGenAiLeaderPracticePage'
+import CategoryPracticePage from './pages/CategoryPracticePage'
+import PublicDemoPage from './pages/PublicDemoPage'
+import PublicDemoAttemptPage from './pages/PublicDemoAttemptPage'
 
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import StudentDashboard from './pages/StudentDashboard'
+import StudentProfilePage from './pages/StudentProfilePage'
 import TutorDashboard from './pages/TutorDashboard'
 import AdminDashboard from './pages/AdminDashboard'
+import AdminUsersPage from './pages/AdminUsersPage'
+import AdminPaidInterestPage from './pages/AdminPaidInterestPage'
+import AdminCategoriesPage from './pages/AdminCategoriesPage'
 import CreateExamPage from './pages/CreateExamPage'
 import TutorExamsPage from './pages/TutorExamsPage'
 import AddQuestionsPage from './pages/AddQuestionsPage'
@@ -37,6 +45,7 @@ import AdminSettingsPage from './pages/AdminSettingsPage'
 import AdminAiTestGeneratorPage from './pages/AdminAiTestGeneratorPage'
 import AdminAiTestsPage from './pages/AdminAiTestsPage'
 import AdminAiTestReviewPage from './pages/AdminAiTestReviewPage'
+import AdminDemoSettingsPage from './pages/AdminDemoSettingsPage'
 
 type AppSettings = {
   id: string
@@ -45,8 +54,17 @@ type AppSettings = {
   updated_at: string
 }
 
+type AppUserProfile = UserProfile & {
+  is_active?: boolean | null
+  is_deleted?: boolean | null
+  deleted_at?: string | null
+}
+
 const defaultMaintenanceMessage =
   'TestBridge is currently under maintenance. Please try again later.'
+
+const inactiveAccountMessage =
+  'Your TestBridge account has been deactivated by the administrator. Please contact support if you think this is a mistake.'
 
 function UnauthorizedPage() {
   return (
@@ -60,10 +78,123 @@ function UnauthorizedPage() {
   )
 }
 
-async function loadUserProfile(user: User): Promise<UserProfile | null> {
+function isInactiveProfile(profile: AppUserProfile | null): boolean {
+  return Boolean(profile?.is_deleted === true || profile?.is_active === false)
+}
+
+async function clearInvalidAuthSession() {
+  await supabase.auth.signOut()
+
+  window.localStorage.clear()
+  window.sessionStorage.clear()
+}
+
+function getRoleFromMetadata(user: User): UserProfile['role'] {
+  const metadata = user.user_metadata as Record<string, unknown>
+  const metadataRole = String(metadata.role || '').toUpperCase()
+
+  if (metadataRole === 'TUTOR') return 'TUTOR'
+  if (metadataRole === 'ADMIN') return 'ADMIN'
+
+  return 'STUDENT'
+}
+
+function getNameFromMetadata(user: User): string {
+  const metadata = user.user_metadata as Record<string, unknown>
+  const metadataName = String(metadata.name || '').trim()
+
+  if (metadataName) {
+    return metadataName
+  }
+
+  return user.email?.split('@')[0] || 'TestBridge User'
+}
+
+function getCategoryIdsFromMetadata(user: User): string[] {
+  const metadata = user.user_metadata as Record<string, unknown>
+  const categoryIds = metadata.selected_category_ids
+
+  if (!Array.isArray(categoryIds)) {
+    return []
+  }
+
+  return categoryIds
+    .map((categoryId) => String(categoryId))
+    .filter(Boolean)
+}
+
+async function syncCategoryInterestsFromMetadata(
+  profileId: string,
+  user: User,
+): Promise<void> {
+  const categoryIds = getCategoryIdsFromMetadata(user)
+
+  if (categoryIds.length === 0) {
+    return
+  }
+
+  const { data: categories, error: categoryError } = await supabase
+    .from('exam_categories')
+    .select('id, slug')
+    .in('id', categoryIds)
+
+  if (categoryError || !categories || categories.length === 0) {
+    return
+  }
+
+  const rows = (categories as Array<{ id: string; slug: string }>).map(
+    (category) => ({
+      profile_id: profileId,
+      category_id: category.id,
+      category_slug: category.slug,
+      interest_source: 'registration',
+      is_active: true,
+      updated_at: new Date().toISOString(),
+    }),
+  )
+
+  await supabase.from('user_category_interests').upsert(rows, {
+    onConflict: 'profile_id,category_id',
+  })
+}
+
+async function createUserProfileFromAuthUser(
+  user: User,
+): Promise<AppUserProfile | null> {
+  const role = getRoleFromMetadata(user)
+
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, auth_user_id, name, email, role, created_at')
+    .insert({
+      auth_user_id: user.id,
+      name: getNameFromMetadata(user),
+      email: user.email || '',
+      role,
+      is_active: true,
+      is_deleted: false,
+    })
+    .select(
+      'id, auth_user_id, name, email, role, created_at, is_active, is_deleted, deleted_at',
+    )
+    .single()
+
+  if (error) {
+    console.error('Unable to auto-create user profile:', error.message)
+    return null
+  }
+
+  const profile = data as unknown as AppUserProfile
+  await syncCategoryInterestsFromMetadata(profile.id, user)
+
+  return profile
+}
+
+async function loadUserProfile(user: User): Promise<AppUserProfile | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select(
+      'id, auth_user_id, name, email, role, created_at, is_active, is_deleted, deleted_at',
+    )
     .eq('auth_user_id', user.id)
     .maybeSingle()
 
@@ -72,7 +203,13 @@ async function loadUserProfile(user: User): Promise<UserProfile | null> {
     return null
   }
 
-  return data as unknown as UserProfile | null
+  if (data) {
+    const profile = data as unknown as AppUserProfile
+    await syncCategoryInterestsFromMetadata(profile.id, user)
+    return profile
+  }
+
+  return createUserProfileFromAuthUser(user)
 }
 
 async function loadAppSettings(): Promise<AppSettings | null> {
@@ -138,10 +275,20 @@ function App() {
       const userProfile = await loadUserProfile(currentSession.user)
 
       if (!userProfile) {
+        await clearInvalidAuthSession()
+        setSession(null)
         setProfile(null)
         setStartupError(
-          'Login session exists, but profile was not found. Please logout and login again.',
+          'Unable to create or load your profile. Please run the profile database fix and try again.',
         )
+        return
+      }
+
+      if (isInactiveProfile(userProfile)) {
+        await clearInvalidAuthSession()
+        setSession(null)
+        setProfile(null)
+        setStartupError(inactiveAccountMessage)
         return
       }
 
@@ -195,16 +342,32 @@ function App() {
 
           if (!isMounted) return
 
-          setProfile(userProfile)
           setAppSettings(loadedSettings)
 
           if (!userProfile) {
+            await clearInvalidAuthSession()
+            if (!isMounted) return
+
+            setSession(null)
+            setProfile(null)
             setStartupError(
-              'Login session exists, but profile was not found. Please logout and login again.',
+              'Unable to create or load your profile. Please run the profile database fix and try again.',
             )
-          } else {
-            setStartupError('')
+            return
           }
+
+          if (isInactiveProfile(userProfile)) {
+            await clearInvalidAuthSession()
+            if (!isMounted) return
+
+            setSession(null)
+            setProfile(null)
+            setStartupError(inactiveAccountMessage)
+            return
+          }
+
+          setProfile(userProfile)
+          setStartupError('')
         } catch (error) {
           console.error('Profile refresh failed:', error)
 
@@ -308,6 +471,14 @@ function App() {
           <Route path="/contact" element={<ContactPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
+          <Route
+            path="/google-gen-ai-leader-practice-test"
+            element={<GoogleGenAiLeaderPracticePage />}
+          />
+          <Route path="/practice/:categorySlug" element={<CategoryPracticePage />} />
+
+          <Route path="/demo" element={<PublicDemoPage />} />
+          <Route path="/demo/:demoSlug" element={<PublicDemoAttemptPage />} />
 
           <Route
             path="/login"
@@ -334,11 +505,7 @@ function App() {
           <Route
             path="/student"
             element={
-              <ProtectedRoute
-                profile={profile}
-                allowedRoles={['STUDENT']}
-                isLoading={false}
-              >
+              <ProtectedRoute profile={profile} allowedRoles={['STUDENT']} isLoading={false}>
                 <StudentDashboard profile={profile as UserProfile} />
               </ProtectedRoute>
             }
@@ -347,12 +514,17 @@ function App() {
           <Route
             path="/student/exams"
             element={
-              <ProtectedRoute
-                profile={profile}
-                allowedRoles={['STUDENT']}
-                isLoading={false}
-              >
+              <ProtectedRoute profile={profile} allowedRoles={['STUDENT']} isLoading={false}>
                 <StudentAvailableExamsPage profile={profile as UserProfile} />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/student/profile"
+            element={
+              <ProtectedRoute profile={profile} allowedRoles={['STUDENT']} isLoading={false}>
+                <StudentProfilePage profile={profile as UserProfile} />
               </ProtectedRoute>
             }
           />
@@ -360,11 +532,7 @@ function App() {
           <Route
             path="/student/exam/:examId/attempt"
             element={
-              <ProtectedRoute
-                profile={profile}
-                allowedRoles={['STUDENT']}
-                isLoading={false}
-              >
+              <ProtectedRoute profile={profile} allowedRoles={['STUDENT']} isLoading={false}>
                 <ExamAttemptPage profile={profile as UserProfile} />
               </ProtectedRoute>
             }
@@ -373,11 +541,7 @@ function App() {
           <Route
             path="/student/results"
             element={
-              <ProtectedRoute
-                profile={profile}
-                allowedRoles={['STUDENT']}
-                isLoading={false}
-              >
+              <ProtectedRoute profile={profile} allowedRoles={['STUDENT']} isLoading={false}>
                 <StudentResultsPage profile={profile as UserProfile} />
               </ProtectedRoute>
             }
@@ -386,11 +550,7 @@ function App() {
           <Route
             path="/student/results/:attemptId/review"
             element={
-              <ProtectedRoute
-                profile={profile}
-                allowedRoles={['STUDENT']}
-                isLoading={false}
-              >
+              <ProtectedRoute profile={profile} allowedRoles={['STUDENT']} isLoading={false}>
                 <StudentResultReviewPage profile={profile as UserProfile} />
               </ProtectedRoute>
             }
@@ -399,11 +559,7 @@ function App() {
           <Route
             path="/tutor"
             element={
-              <ProtectedRoute
-                profile={profile}
-                allowedRoles={['TUTOR']}
-                isLoading={false}
-              >
+              <ProtectedRoute profile={profile} allowedRoles={['TUTOR']} isLoading={false}>
                 <TutorDashboard profile={profile as UserProfile} />
               </ProtectedRoute>
             }
@@ -412,11 +568,7 @@ function App() {
           <Route
             path="/tutor/exams"
             element={
-              <ProtectedRoute
-                profile={profile}
-                allowedRoles={['TUTOR']}
-                isLoading={false}
-              >
+              <ProtectedRoute profile={profile} allowedRoles={['TUTOR']} isLoading={false}>
                 <TutorExamsPage profile={profile as UserProfile} />
               </ProtectedRoute>
             }
@@ -425,11 +577,7 @@ function App() {
           <Route
             path="/tutor/exam/create"
             element={
-              <ProtectedRoute
-                profile={profile}
-                allowedRoles={['TUTOR']}
-                isLoading={false}
-              >
+              <ProtectedRoute profile={profile} allowedRoles={['TUTOR']} isLoading={false}>
                 <CreateExamPage profile={profile as UserProfile} />
               </ProtectedRoute>
             }
@@ -438,11 +586,7 @@ function App() {
           <Route
             path="/tutor/exam/:examId/questions"
             element={
-              <ProtectedRoute
-                profile={profile}
-                allowedRoles={['TUTOR']}
-                isLoading={false}
-              >
+              <ProtectedRoute profile={profile} allowedRoles={['TUTOR']} isLoading={false}>
                 <AddQuestionsPage profile={profile as UserProfile} />
               </ProtectedRoute>
             }
@@ -451,12 +595,35 @@ function App() {
           <Route
             path="/admin"
             element={
-              <ProtectedRoute
-                profile={profile}
-                allowedRoles={['ADMIN']}
-                isLoading={false}
-              >
+              <ProtectedRoute profile={profile} allowedRoles={['ADMIN']} isLoading={false}>
                 <AdminDashboard profile={profile as UserProfile} />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/users"
+            element={
+              <ProtectedRoute profile={profile} allowedRoles={['ADMIN']} isLoading={false}>
+                <AdminUsersPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/paid-interest"
+            element={
+              <ProtectedRoute profile={profile} allowedRoles={['ADMIN']} isLoading={false}>
+                <AdminPaidInterestPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/categories"
+            element={
+              <ProtectedRoute profile={profile} allowedRoles={['ADMIN']} isLoading={false}>
+                <AdminCategoriesPage />
               </ProtectedRoute>
             }
           />
@@ -464,11 +631,7 @@ function App() {
           <Route
             path="/admin/exams/pending"
             element={
-              <ProtectedRoute
-                profile={profile}
-                allowedRoles={['ADMIN']}
-                isLoading={false}
-              >
+              <ProtectedRoute profile={profile} allowedRoles={['ADMIN']} isLoading={false}>
                 <AdminPendingExamsPage />
               </ProtectedRoute>
             }
@@ -477,11 +640,7 @@ function App() {
           <Route
             path="/admin/exam/:examId/questions"
             element={
-              <ProtectedRoute
-                profile={profile}
-                allowedRoles={['ADMIN']}
-                isLoading={false}
-              >
+              <ProtectedRoute profile={profile} allowedRoles={['ADMIN']} isLoading={false}>
                 <AddQuestionsPage profile={profile as UserProfile} />
               </ProtectedRoute>
             }
@@ -490,12 +649,17 @@ function App() {
           <Route
             path="/admin/settings"
             element={
-              <ProtectedRoute
-                profile={profile}
-                allowedRoles={['ADMIN']}
-                isLoading={false}
-              >
+              <ProtectedRoute profile={profile} allowedRoles={['ADMIN']} isLoading={false}>
                 <AdminSettingsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/demo-settings"
+            element={
+              <ProtectedRoute profile={profile} allowedRoles={['ADMIN']} isLoading={false}>
+                <AdminDemoSettingsPage />
               </ProtectedRoute>
             }
           />
@@ -503,11 +667,7 @@ function App() {
           <Route
             path="/admin/ai-test-generator"
             element={
-              <ProtectedRoute
-                profile={profile}
-                allowedRoles={['ADMIN']}
-                isLoading={false}
-              >
+              <ProtectedRoute profile={profile} allowedRoles={['ADMIN']} isLoading={false}>
                 <AdminAiTestGeneratorPage profile={profile as UserProfile} />
               </ProtectedRoute>
             }
@@ -516,11 +676,7 @@ function App() {
           <Route
             path="/admin/ai-tests"
             element={
-              <ProtectedRoute
-                profile={profile}
-                allowedRoles={['ADMIN']}
-                isLoading={false}
-              >
+              <ProtectedRoute profile={profile} allowedRoles={['ADMIN']} isLoading={false}>
                 <AdminAiTestsPage />
               </ProtectedRoute>
             }
@@ -529,11 +685,7 @@ function App() {
           <Route
             path="/admin/ai-tests/:testId/review"
             element={
-              <ProtectedRoute
-                profile={profile}
-                allowedRoles={['ADMIN']}
-                isLoading={false}
-              >
+              <ProtectedRoute profile={profile} allowedRoles={['ADMIN']} isLoading={false}>
                 <AdminAiTestReviewPage profile={profile as UserProfile} />
               </ProtectedRoute>
             }
